@@ -34,8 +34,14 @@ const CreateQuiz = () => {
   };
 
   const updateOption = (qIndex, oIndex, value) => {
-    const updated = [...questions];
-    updated[qIndex].options[oIndex] = value;
+    const updated = questions.map((q, idx) => {
+      if (idx === qIndex) {
+        const newOptions = [...q.options];
+        newOptions[oIndex] = value;
+        return { ...q, options: newOptions };
+      }
+      return q;
+    });
     setQuestions(updated);
   };
 
