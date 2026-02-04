@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Plus, Minus, Save, ArrowLeft } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Save, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -10,53 +9,16 @@ const API = `${BACKEND_URL}/api`;
 
 function CreateQuiz() {
   const navigate = useNavigate();
-  const titleState = useState('');
-  const durationState = useState(10);
-  const questionsState = useState([
-    { question: '', options: ['', '', '', ''], correctAnswer: 0, timeLimit: 30 }
-  ]);
-  const loadingState = useState(false);
-
-  const title = titleState[0];
-  const setTitle = titleState[1];
-  const duration = durationState[0];
-  const setDuration = durationState[1];
-  const questions = questionsState[0];
-  const setQuestions = questionsState[1];
-  const loading = loadingState[0];
-  const setLoading = loadingState[1];
-
-  function addQuestion() {
-    const newQuestion = { question: '', options: ['', '', '', ''], correctAnswer: 0, timeLimit: 30 };
-    setQuestions([...questions, newQuestion]);
-  }
-
-  function removeQuestion(index) {
-    if (questions.length > 1) {
-      setQuestions(questions.filter((q, i) => i !== index));
-    }
-  }
-
-  function updateQuestion(index, field, value) {
-    const newQuestions = questions.map((q, i) => {
-      if (i === index) {
-        return { ...q, [field]: value };
-      }
-      return q;
-    });
-    setQuestions(newQuestions);
-  }
-
-  function updateOption(qIndex, oIndex, value) {
-    const newQuestions = questions.map((q, qi) => {
-      if (qi === qIndex) {
-        const newOpts = q.options.map((opt, oi) => oi === oIndex ? value : opt);
-        return { ...q, options: newOpts };
-      }
-      return q;
-    });
-    setQuestions(newQuestions);
-  }
+  const [title, setTitle] = useState('');
+  const [duration, setDuration] = useState(10);
+  const [q1Text, setQ1Text] = useState('');
+  const [q1Opt0, setQ1Opt0] = useState('');
+  const [q1Opt1, setQ1Opt1] = useState('');
+  const [q1Opt2, setQ1Opt2] = useState('');
+  const [q1Opt3, setQ1Opt3] = useState('');
+  const [q1Correct, setQ1Correct] = useState(0);
+  const [q1Time, setQ1Time] = useState(30);
+  const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -66,28 +28,25 @@ function CreateQuiz() {
       return;
     }
     
-    for (let i = 0; i < questions.length; i++) {
-      const q = questions[i];
-      if (!q.question.trim()) {
-        toast.error(`Question ${i + 1} is empty`);
-        return;
-      }
-      for (let j = 0; j < q.options.length; j++) {
-        if (!q.options[j].trim()) {
-          toast.error(`All options for Question ${i + 1} must be filled`);
-          return;
-        }
-      }
+    if (!q1Text.trim() || !q1Opt0.trim() || !q1Opt1.trim() || !q1Opt2.trim() || !q1Opt3.trim()) {
+      toast.error('Please fill all fields');
+      return;
     }
 
     setLoading(true);
     try {
-      const response = await axios.post(`${API}/admin/quiz`, {
+      const quizData = {
         title,
         duration,
-        questions
-      });
-      
+        questions: [{
+          question: q1Text,
+          options: [q1Opt0, q1Opt1, q1Opt2, q1Opt3],
+          correctAnswer: q1Correct,
+          timeLimit: q1Time
+        }]
+      };
+
+      const response = await axios.post(`${API}/admin/quiz`, quizData);
       toast.success(`Quiz created! Code: ${response.data.code}`);
       navigate('/admin');
     } catch (error) {
@@ -101,168 +60,123 @@ function CreateQuiz() {
   return (
     <div className="admin-theme min-h-screen p-6">
       <div className="max-w-4xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+        <button
+          onClick={() => navigate('/admin')}
+          className="flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-6 font-semibold"
         >
-          <button
-            onClick={() => navigate('/admin')}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-6 font-semibold"
-            data-testid="back-to-dashboard-button"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
-          </button>
+          <ArrowLeft className="w-5 h-5" />
+          Back to Dashboard
+        </button>
 
-          <h1 
-            className="text-4xl md:text-5xl font-bold mb-8 text-[#1A1025]"
-            style={{ fontFamily: 'Fredoka, sans-serif' }}
-            data-testid="create-quiz-title"
-          >
-            Create New Quiz
-          </h1>
+        <h1 className="text-4xl font-bold mb-8 text-[#1A1025]" style={{ fontFamily: 'Fredoka, sans-serif' }}>
+          Create New Quiz
+        </h1>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="quiz-title">
-                Quiz Title
-              </label>
-              <input
-                id="quiz-title"
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., General Knowledge Quiz"
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#FF6B00] focus:outline-none transition-all"
-                data-testid="quiz-title-input"
-              />
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <label className="block text-sm font-bold text-gray-700 mb-2">Quiz Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g., General Knowledge Quiz"
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#FF6B00] focus:outline-none"
+            />
+          </div>
 
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="quiz-duration">
-                Quiz Duration (minutes)
-              </label>
-              <input
-                id="quiz-duration"
-                type="number"
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
-                min="1"
-                max="120"
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#FF6B00] focus:outline-none transition-all"
-                data-testid="quiz-duration-input"
-              />
-            </div>
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <label className="block text-sm font-bold text-gray-700 mb-2">Duration (minutes)</label>
+            <input
+              type="number"
+              value={duration}
+              onChange={(e) => setDuration(Number(e.target.value))}
+              min="1"
+              max="120"
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#FF6B00] focus:outline-none"
+            />
+          </div>
 
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-[#1A1025]" style={{ fontFamily: 'Fredoka, sans-serif' }} data-testid="questions-section-title">
-                  Questions
-                </h2>
-                <button
-                  type="button"
-                  onClick={addQuestion}
-                  className="bg-[#00FF94] text-black font-bold py-2 px-6 rounded-full hover:brightness-110 transition-all flex items-center gap-2"
-                  data-testid="add-question-button"
-                >
-                  <Plus className="w-5 h-5" />
-                  Add Question
-                </button>
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <h3 className="text-lg font-bold text-gray-700 mb-4">Question 1</h3>
+            
+            <input
+              type="text"
+              value={q1Text}
+              onChange={(e) => setQ1Text(e.target.value)}
+              placeholder="Enter your question"
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl mb-4"
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <input type="radio" name="correct" checked={q1Correct === 0} onChange={() => setQ1Correct(0)} />
+                <input
+                  type="text"
+                  value={q1Opt0}
+                  onChange={(e) => setQ1Opt0(e.target.value)}
+                  placeholder="Option 1"
+                  className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg"
+                />
               </div>
-
-              {questions.map((q, qIndex) => (
-                <motion.div
-                  key={qIndex}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="bg-white rounded-2xl shadow-lg p-6"
-                  data-testid={`question-${qIndex}`}
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-lg font-bold text-gray-700" data-testid={`question-label-${qIndex}`}>Question {qIndex + 1}</h3>
-                    {questions.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeQuestion(qIndex)}
-                        className="text-red-500 hover:text-red-700 font-semibold flex items-center gap-1"
-                        data-testid={`remove-question-${qIndex}`}
-                      >
-                        <Minus className="w-4 h-4" />
-                        Remove
-                      </button>
-                    )}
-                  </div>
-
-                  <input
-                    type="text"
-                    value={q.question}
-                    onChange={(e) => updateQuestion(qIndex, 'question', e.target.value)}
-                    placeholder="Enter your question"
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#9D00FF] focus:outline-none transition-all mb-4"
-                    data-testid={`question-input-${qIndex}`}
-                  />
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                    {q.options.map((opt, oIndex) => (
-                      <div key={oIndex} className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name={`correct-${qIndex}`}
-                          checked={q.correctAnswer === oIndex}
-                          onChange={() => updateQuestion(qIndex, 'correctAnswer', oIndex)}
-                          className="w-5 h-5 text-[#00FF94] focus:ring-[#00FF94]"
-                          data-testid={`correct-answer-radio-${qIndex}-${oIndex}`}
-                        />
-                        <input
-                          type="text"
-                          value={opt}
-                          onChange={(e) => updateOption(qIndex, oIndex, e.target.value)}
-                          placeholder={`Option ${oIndex + 1}`}
-                          className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-[#9D00FF] focus:outline-none transition-all"
-                          data-testid={`option-input-${qIndex}-${oIndex}`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Time Limit (seconds)
-                    </label>
-                    <input
-                      type="number"
-                      value={q.timeLimit}
-                      onChange={(e) => updateQuestion(qIndex, 'timeLimit', Number(e.target.value))}
-                      min="5"
-                      max="300"
-                      className="w-32 px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-[#9D00FF] focus:outline-none transition-all"
-                      data-testid={`time-limit-input-${qIndex}`}
-                    />
-                  </div>
-                </motion.div>
-              ))}
+              <div className="flex items-center gap-2">
+                <input type="radio" name="correct" checked={q1Correct === 1} onChange={() => setQ1Correct(1)} />
+                <input
+                  type="text"
+                  value={q1Opt1}
+                  onChange={(e) => setQ1Opt1(e.target.value)}
+                  placeholder="Option 2"
+                  className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="radio" name="correct" checked={q1Correct === 2} onChange={() => setQ1Correct(2)} />
+                <input
+                  type="text"
+                  value={q1Opt2}
+                  onChange={(e) => setQ1Opt2(e.target.value)}
+                  placeholder="Option 3"
+                  className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="radio" name="correct" checked={q1Correct === 3} onChange={() => setQ1Correct(3)} />
+                <input
+                  type="text"
+                  value={q1Opt3}
+                  onChange={(e) => setQ1Opt3(e.target.value)}
+                  placeholder="Option 4"
+                  className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-lg"
+                />
+              </div>
             </div>
 
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#FF6B00] text-white font-bold py-5 px-8 rounded-full border-b-4 border-[#CC4800] hover:brightness-110 transition-all text-lg flex items-center justify-center gap-3 disabled:opacity-50"
-              style={{ fontFamily: 'Fredoka, sans-serif' }}
-              data-testid="save-quiz-button"
-            >
-              {loading ? (
-                <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <>
-                  <Save className="w-6 h-6" />
-                  Create Quiz
-                </>
-              )}
-            </motion.button>
-          </form>
-        </motion.div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Time Limit (seconds)</label>
+              <input
+                type="number"
+                value={q1Time}
+                onChange={(e) => setQ1Time(Number(e.target.value))}
+                min="5"
+                max="300"
+                className="w-32 px-3 py-2 border-2 border-gray-200 rounded-lg"
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-[#FF6B00] text-white font-bold py-5 px-8 rounded-full border-b-4 border-[#CC4800] disabled:opacity-50"
+            style={{ fontFamily: 'Fredoka, sans-serif' }}
+          >
+            {loading ? 'Creating...' : (
+              <>
+                <Save className="inline w-6 h-6 mr-2" />
+                Create Quiz
+              </>
+            )}
+          </button>
+        </form>
       </div>
     </div>
   );
