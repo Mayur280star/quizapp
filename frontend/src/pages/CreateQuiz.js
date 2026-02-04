@@ -8,47 +8,59 @@ import { toast } from 'sonner';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-const CreateQuiz = () => {
+function CreateQuiz() {
   const navigate = useNavigate();
-  const [title, setTitle] = useState('');
-  const [duration, setDuration] = useState(10);
-  const [questions, setQuestions] = useState([
+  const titleState = useState('');
+  const durationState = useState(10);
+  const questionsState = useState([
     { question: '', options: ['', '', '', ''], correctAnswer: 0, timeLimit: 30 }
   ]);
-  const [loading, setLoading] = useState(false);
+  const loadingState = useState(false);
 
-  const addQuestion = () => {
-    setQuestions([...questions, { question: '', options: ['', '', '', ''], correctAnswer: 0, timeLimit: 30 }]);
-  };
+  const title = titleState[0];
+  const setTitle = titleState[1];
+  const duration = durationState[0];
+  const setDuration = durationState[1];
+  const questions = questionsState[0];
+  const setQuestions = questionsState[1];
+  const loading = loadingState[0];
+  const setLoading = loadingState[1];
 
-  const removeQuestion = (index) => {
+  function addQuestion() {
+    const newQuestion = { question: '', options: ['', '', '', ''], correctAnswer: 0, timeLimit: 30 };
+    setQuestions([...questions, newQuestion]);
+  }
+
+  function removeQuestion(index) {
     if (questions.length > 1) {
-      setQuestions(questions.filter((_, i) => i !== index));
+      setQuestions(questions.filter((q, i) => i !== index));
     }
-  };
+  }
 
-  const updateQuestion = (index, field, value) => {
-    const updated = [...questions];
-    updated[index][field] = value;
-    setQuestions(updated);
-  };
-
-  const updateOption = (qIndex, oIndex, value) => {
-    const updated = questions.map((q, idx) => {
-      if (idx === qIndex) {
-        const newOptions = [...q.options];
-        newOptions[oIndex] = value;
-        return { ...q, options: newOptions };
+  function updateQuestion(index, field, value) {
+    const newQuestions = questions.map((q, i) => {
+      if (i === index) {
+        return { ...q, [field]: value };
       }
       return q;
     });
-    setQuestions(updated);
-  };
+    setQuestions(newQuestions);
+  }
 
-  const handleSubmit = async (e) => {
+  function updateOption(qIndex, oIndex, value) {
+    const newQuestions = questions.map((q, qi) => {
+      if (qi === qIndex) {
+        const newOpts = q.options.map((opt, oi) => oi === oIndex ? value : opt);
+        return { ...q, options: newOpts };
+      }
+      return q;
+    });
+    setQuestions(newQuestions);
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault();
     
-    // Validation
     if (!title.trim()) {
       toast.error('Please enter a quiz title');
       return;
@@ -60,9 +72,11 @@ const CreateQuiz = () => {
         toast.error(`Question ${i + 1} is empty`);
         return;
       }
-      if (q.options.some(opt => !opt.trim())) {
-        toast.error(`All options for Question ${i + 1} must be filled`);
-        return;
+      for (let j = 0; j < q.options.length; j++) {
+        if (!q.options[j].trim()) {
+          toast.error(`All options for Question ${i + 1} must be filled`);
+          return;
+        }
       }
     }
 
@@ -82,7 +96,7 @@ const CreateQuiz = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
     <div className="admin-theme min-h-screen p-6">
@@ -252,6 +266,6 @@ const CreateQuiz = () => {
       </div>
     </div>
   );
-};
+}
 
 export default CreateQuiz;
