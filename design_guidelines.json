@@ -1,0 +1,159 @@
+{
+  "identity": {
+    "name": "E1 - The Kinetic Gamer",
+    "persona": "Vibrant, high-energy, playful, and competitive. Avoids boring SaaS flatness.",
+    "principles": [
+      "Gamification is not just badges; it's the feel of the button press.",
+      "Color is energy. Use it to drive urgency and excitement.",
+      "Motion conveys status. Leaderboards must feel alive."
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Fredoka, 'Comic Sans MS', sans-serif",
+      "body": "Outfit, 'Inter', sans-serif",
+      "mono": "'JetBrains Mono', monospace"
+    },
+    "imports": [
+      "https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&family=Outfit:wght@100..900&display=swap"
+    ],
+    "scale": {
+      "h1": "text-5xl md:text-7xl font-bold tracking-tight",
+      "h2": "text-4xl md:text-5xl font-semibold",
+      "h3": "text-2xl md:text-3xl font-semibold",
+      "body_lg": "text-lg md:text-xl font-medium",
+      "body": "text-base font-normal",
+      "caption": "text-sm font-medium tracking-wide uppercase"
+    }
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "DEFAULT": "#FF6B00",
+        "foreground": "#FFFFFF",
+        "hover": "#E55A00",
+        "active": "#CC4800"
+      },
+      "secondary": {
+        "DEFAULT": "#9D00FF",
+        "foreground": "#FFFFFF",
+        "hover": "#8A00E0"
+      },
+      "accent": {
+        "DEFAULT": "#00FF94",
+        "foreground": "#000000",
+        "glow": "0 0 20px #00FF94"
+      },
+      "destructive": {
+        "DEFAULT": "#FF0055",
+        "foreground": "#FFFFFF"
+      },
+      "background": {
+        "DEFAULT": "#0F0518",
+        "paper": "#1A1025",
+        "admin": "#F8F9FC"
+      },
+      "text": {
+        "main": "#FFFFFF",
+        "muted": "#A39EAA",
+        "admin_main": "#1A1025"
+      }
+    },
+    "gradients": {
+      "brand": "bg-gradient-to-r from-[#FF6B00] via-[#FF0055] to-[#9D00FF]",
+      "glass": "bg-white/10 backdrop-blur-xl border border-white/20",
+      "glass_dark": "bg-black/40 backdrop-blur-xl border border-white/10",
+      "neon_surface": "bg-[#1A1025] border border-[#9D00FF]/30 shadow-[0_0_15px_rgba(157,0,255,0.1)]"
+    }
+  },
+  "visual_enhancers": {
+    "radius": {
+      "default": "rounded-xl",
+      "button": "rounded-full",
+      "card": "rounded-2xl"
+    },
+    "shadows": {
+      "button_3d": "border-b-4 border-black/20 active:border-b-0 active:translate-y-1 transition-all",
+      "glow": "shadow-[0_0_20px_rgba(255,107,0,0.4)]",
+      "card": "shadow-xl shadow-black/20"
+    }
+  },
+  "layout": {
+    "spacing": "Relaxed. Use p-6, p-8, gap-6, gap-8.",
+    "grid_modes": {
+      "admin_dashboard": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6",
+      "quiz_play": "max-w-md mx-auto flex flex-col h-screen justify-center p-4",
+      "leaderboard": "max-w-4xl mx-auto flex flex-col gap-4 p-6"
+    }
+  },
+  "components": {
+    "Button": {
+      "styles": {
+        "primary": "bg-primary text-primary-foreground font-bold py-4 px-8 rounded-full border-b-4 border-[#CC4800] hover:brightness-110 active:border-b-0 active:translate-y-1 transition-all",
+        "secondary": "bg-secondary text-secondary-foreground font-bold py-3 px-6 rounded-full border-b-4 border-[#7000B8] hover:brightness-110 active:border-b-0 active:translate-y-1 transition-all",
+        "ghost": "bg-transparent hover:bg-white/5 text-white font-semibold py-2 px-4 rounded-lg"
+      }
+    },
+    "Card": {
+      "default": "bg-background-paper/80 backdrop-blur-md border border-white/5 rounded-2xl p-6 shadow-xl",
+      "glass": "bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6"
+    },
+    "Input": {
+      "default": "bg-black/20 border-2 border-white/10 rounded-xl px-4 py-3 text-lg focus:border-primary focus:ring-4 focus:ring-primary/20 outline-none transition-all placeholder:text-white/30 text-white"
+    }
+  },
+  "motion": {
+    "page_transition": {
+      "initial": { "opacity": 0, "y": 20 },
+      "animate": { "opacity": 1, "y": 0 },
+      "exit": { "opacity": 0, "y": -20 },
+      "transition": { "duration": 0.3, "ease": "easeOut" }
+    },
+    "button_press": {
+      "scale": 0.95
+    },
+    "leaderboard_row": {
+      "type": "spring",
+      "stiffness": 300,
+      "damping": 30
+    }
+  },
+  "assets": {
+    "images": {
+      "background_main": "https://images.unsplash.com/photo-1767474256408-3db5bcc42eb9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMHBsYXlmdWwlMjBnZW9tZXRyaWMlMjAzZCUyMHNoYXBlcyUyMHZpYnJhbnQlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3MDIyNTIxM3ww&ixlib=rb-4.1.0&q=85",
+      "leaderboard_header": "https://images.unsplash.com/photo-1769454296960-889bf3f4bac7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwyfHxlc3BvcnRzJTIwZ2FtaW5nJTIwdHJvcGh5JTIwbmVvbiUyMHZpYnJhbnR8ZW58MHx8fHwxNzcwMjI1MjE0fDA&ixlib=rb-4.1.0&q=85",
+      "admin_bg": "https://images.unsplash.com/photo-1732305477382-2d597e47b4ec?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHw0fHxhYnN0cmFjdCUyMHBsYXlmdWwlMjBnZW9tZXRyaWMlMjAzZCUyMHNoYXBlcyUyMHZpYnJhbnQlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3MDIyNTIxM3ww&ixlib=rb-4.1.0&q=85"
+    },
+    "icons": {
+      "provider": "lucide-react",
+      "mapping": {
+        "trophy": "Trophy",
+        "timer": "Timer",
+        "user": "User",
+        "play": "Play",
+        "settings": "Settings",
+        "check": "Check",
+        "x": "X",
+        "zap": "Zap",
+        "crown": "Crown"
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "INSTALL_DEPENDENCY: yarn add framer-motion clsx tailwind-merge lucide-react sonner",
+    "THEME_STRATEGY: Use a 'Hybrid Theme'. Admin Panel is Light Mode (clean, readable). Quiz/Student View is Dark Mode (immersive, gaming). Force these classes on the respective wrapper divs.",
+    "LAYOUT_STRATEGY: The Quiz View MUST be mobile-optimized. Even on desktop, center the quiz card like a mobile app view (max-w-md).",
+    "ANIMATION_STRATEGY: Use framer-motion for the Leaderboard reordering. It is CRITICAL for the 'Live' feel.",
+    "Use the provided Google Fonts. Add the import to index.css immediately.",
+    "For the 'Join Quiz' page, use the 'background_main' image as a full-screen cover with a heavy dark overlay (bg-black/60) to ensure text readability.",
+    "The '3D Button' style defined in visual_enhancers is mandatory for the Quiz Answer buttons. It gives tactile feedback."
+  ],
+  "universal_guidelines": [
+    "Don't make generic centered layouts.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Every interaction needs micro-animations.",
+    "Use 2-3x more spacing than feels comfortable.",
+    "Subtle grain textures, noise overlays, custom cursors.",
+    "All interactive elements MUST include data-testid attributes."
+  ]
+}
