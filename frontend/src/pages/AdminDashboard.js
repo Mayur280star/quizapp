@@ -1,9 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Plus, PlayCircle, Users, Ban } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import {
+  Plus, PlayCircle, Users, Ban, MoreVertical, Search,
+  Download, TrendingUp, Clock,
+  BarChart3, Eye, Trash2, Copy
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -12,6 +22,8 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
 
   useEffect(() => {
     fetchQuizzes();
@@ -41,114 +53,277 @@ const AdminDashboard = () => {
     }
   };
 
-  const viewLeaderboard = (code) => {
-    navigate(`/leaderboard/${code}`);
+  const filteredQuizzes = quizzes.filter(quiz => {
+    const matchesSearch = quiz.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         quiz.code.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = filterStatus === 'all' || quiz.status === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
+
+  const stats = {
+    total: quizzes.length,
+    active: quizzes.filter(q => q.status === 'active').length,
+    inactive: quizzes.filter(q => q.status === 'inactive').length,
+    totalParticipants: quizzes.reduce((sum, q) => sum + (q.participantCount || 0), 0)
   };
 
   return (
-    <div className="admin-theme min-h-screen p-6">
-      <div className="max-w-7xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <h1 
-            className="text-4xl md:text-5xl font-bold mb-4 text-[#1A1025]"
-            style={{ fontFamily: 'Fredoka, sans-serif' }}
-            data-testid="admin-dashboard-title"
-          >
-            Admin Dashboard
-          </h1>
-          <p className="text-lg text-gray-600" data-testid="admin-dashboard-subtitle">Manage your quizzes and monitor live participants</p>
-        </motion.div>
+    <div className="min-h-screen bg-[#F8F9FC]">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 
+                className="text-4xl font-bold text-gray-900 mb-2"
+                style={{ fontFamily: 'Fredoka, sans-serif' }}
+              >
+                Quiz Dashboard
+              </h1>
+              <p className="text-gray-600">Create and manage your interactive quizzes</p>
+            </div>
 
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => navigate('/admin/create')}
-          className="bg-[#FF6B00] text-white font-bold py-4 px-8 rounded-full border-b-4 border-[#CC4800] hover:brightness-110 transition-all mb-8 flex items-center gap-3 text-lg"
-          style={{ fontFamily: 'Fredoka, sans-serif' }}
-          data-testid="create-new-quiz-button"
-        >
-          <Plus className="w-6 h-6" />
-          Create New Quiz
-        </motion.button>
+            <Button
+              onClick={() => navigate('/admin/create')}
+              size="lg"
+              className="bg-[#FF6B00] hover:bg-[#E55F00] text-white gap-2 shadow-lg"
+            >
+              <Plus className="w-5 h-5" />
+              Create Quiz
+            </Button>
+          </div>
+        </div>
+      </header>
 
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card className="border-2">
+            <CardHeader className="pb-3">
+              <CardDescription className="flex items-center gap-2 text-xs font-medium">
+                <BarChart3 className="w-4 h-4" />
+                Total Quizzes
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-gray-900">{stats.total}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-2 border-green-200 bg-green-50">
+            <CardHeader className="pb-3">
+              <CardDescription className="flex items-center gap-2 text-xs font-medium text-green-700">
+                <PlayCircle className="w-4 h-4" />
+                Active
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-green-700">{stats.active}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-2 border-gray-200">
+            <CardHeader className="pb-3">
+              <CardDescription className="flex items-center gap-2 text-xs font-medium">
+                <Ban className="w-4 h-4" />
+                Inactive
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-gray-600">{stats.inactive}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-2 border-purple-200 bg-purple-50">
+            <CardHeader className="pb-3">
+              <CardDescription className="flex items-center gap-2 text-xs font-medium text-purple-700">
+                <Users className="w-4 h-4" />
+                Total Players
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-purple-700">{stats.totalParticipants}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="bg-white rounded-xl border-2 border-gray-200 p-4 mb-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search quizzes by title or code..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            <Tabs value={filterStatus} onValueChange={setFilterStatus} className="w-auto">
+              <TabsList>
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="active">Active</TabsTrigger>
+                <TabsTrigger value="inactive">Inactive</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        </div>
+
+        {/* Quiz Grid */}
         {loading ? (
-          <div className="text-center py-12" data-testid="loading-state">
+          <div className="text-center py-12">
             <div className="inline-block w-12 h-12 border-4 border-[#FF6B00] border-t-transparent rounded-full animate-spin"></div>
           </div>
-        ) : quizzes.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-2xl shadow-lg" data-testid="empty-state">
+        ) : filteredQuizzes.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-xl border-2 border-dashed border-gray-300">
             <PlayCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg">No quizzes created yet. Start by creating your first quiz!</p>
+            <h3 className="text-xl font-semibold text-gray-600 mb-2">No quizzes found</h3>
+            <p className="text-gray-500 mb-6">
+              {searchQuery ? 'Try adjusting your search' : 'Start by creating your first quiz!'}
+            </p>
+            {!searchQuery && (
+              <Button
+                onClick={() => navigate('/admin/create')}
+                className="bg-[#FF6B00] hover:bg-[#E55F00]"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create Quiz
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {quizzes.map((quiz, index) => (
+            {filteredQuizzes.map((quiz, index) => (
               <motion.div
                 key={quiz.code}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="bg-white rounded-2xl shadow-xl p-6 border-2 border-gray-100 hover:border-[#9D00FF] transition-all"
-                data-testid={`quiz-card-${quiz.code}`}
+                transition={{ delay: index * 0.05 }}
               >
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-2xl font-bold text-[#1A1025] mb-1" style={{ fontFamily: 'Fredoka, sans-serif' }} data-testid={`quiz-title-${quiz.code}`}>
+                <Card className="border-2 hover:border-[#8B5CF6] transition-all group h-full">
+                  <CardHeader>
+                    <div className="flex items-start justify-between mb-3">
+                      <Badge
+                        variant={quiz.status === 'active' ? 'default' : 'secondary'}
+                        className={quiz.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}
+                      >
+                        {quiz.status}
+                      </Badge>
+                      
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => navigate(`/leaderboard/${quiz.code}`)}>
+                            <Eye className="w-4 h-4 mr-2" />
+                            View Leaderboard
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => toggleQuizStatus(quiz.code, quiz.status)}>
+                            {quiz.status === 'active' ? (
+                              <>
+                                <Ban className="w-4 h-4 mr-2" />
+                                Deactivate
+                              </>
+                            ) : (
+                              <>
+                                <PlayCircle className="w-4 h-4 mr-2" />
+                                Activate
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <Copy className="w-4 h-4 mr-2" />
+                            Duplicate
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <Download className="w-4 h-4 mr-2" />
+                            Export Results
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600">
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+
+                    <CardTitle 
+                      className="text-xl mb-2 group-hover:text-[#8B5CF6] transition-colors"
+                      style={{ fontFamily: 'Fredoka, sans-serif' }}
+                    >
                       {quiz.title}
-                    </h3>
-                    <p className="text-sm text-gray-500" data-testid={`quiz-code-${quiz.code}`}>Code: <span className="font-bold text-[#FF6B00]">{quiz.code}</span></p>
-                  </div>
-                  <span 
-                    className={`px-3 py-1 rounded-full text-xs font-bold ${
-                      quiz.status === 'active' 
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-red-100 text-red-700'
-                    }`}
-                    data-testid={`quiz-status-${quiz.code}`}
-                  >
-                    {quiz.status}
-                  </span>
-                </div>
+                    </CardTitle>
+                    
+                    <CardDescription className="font-mono text-sm">
+                      Code: <span className="font-bold text-[#FF6B00]">{quiz.code}</span>
+                    </CardDescription>
+                  </CardHeader>
 
-                <div className="space-y-2 mb-4 text-sm text-gray-600">
-                  <p data-testid={`quiz-questions-${quiz.code}`}>📝 {quiz.questionsCount} questions</p>
-                  <p data-testid={`quiz-duration-${quiz.code}`}>⏱️ {quiz.duration} minutes</p>
-                </div>
+                  <CardContent>
+                    <div className="space-y-3 mb-4">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Clock className="w-4 h-4" />
+                        <span>{quiz.questionsCount} questions • {quiz.duration} min</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Users className="w-4 h-4" />
+                        <span>{quiz.participantCount || 0} participants</span>
+                      </div>
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => viewLeaderboard(quiz.code)}
-                    className="flex-1 bg-[#9D00FF] text-white font-semibold py-2 px-4 rounded-lg hover:brightness-110 transition-all flex items-center justify-center gap-2"
-                    data-testid={`view-leaderboard-${quiz.code}`}
-                  >
-                    <Users className="w-4 h-4" />
-                    View
-                  </button>
-                  <button
-                    onClick={() => toggleQuizStatus(quiz.code, quiz.status)}
-                    className={`flex-1 font-semibold py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 ${
-                      quiz.status === 'active'
-                        ? 'bg-red-500 text-white hover:bg-red-600'
-                        : 'bg-green-500 text-white hover:bg-green-600'
-                    }`}
-                    data-testid={`toggle-status-${quiz.code}`}
-                  >
-                    {quiz.status === 'active' ? (
-                      <><Ban className="w-4 h-4" /> Disable</>
-                    ) : (
-                      <><PlayCircle className="w-4 h-4" /> Enable</>
-                    )}
-                  </button>
-                </div>
+                      {quiz.lastPlayed && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <TrendingUp className="w-4 h-4" />
+                          <span>Last played: {new Date(quiz.lastPlayed).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => navigate(`/leaderboard/${quiz.code}`)}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        View
+                      </Button>
+                      
+                      <Button
+                        onClick={() => toggleQuizStatus(quiz.code, quiz.status)}
+                        size="sm"
+                        className={`flex-1 ${
+                          quiz.status === 'active'
+                            ? 'bg-red-500 hover:bg-red-600'
+                            : 'bg-green-500 hover:bg-green-600'
+                        }`}
+                      >
+                        {quiz.status === 'active' ? (
+                          <>
+                            <Ban className="w-4 h-4 mr-1" />
+                            Stop
+                          </>
+                        ) : (
+                          <>
+                            <PlayCircle className="w-4 h-4 mr-1" />
+                            Start
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               </motion.div>
             ))}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };

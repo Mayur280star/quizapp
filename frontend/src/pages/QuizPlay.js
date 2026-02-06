@@ -1,16 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Timer, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import confetti from 'canvas-confetti';
+import { Check, X, BarChart3, Users, Zap, Trophy } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
+
+const ANSWER_COLORS = [
+  { bg: '#E21B3C', hover: '#C41830', shape: 'triangle', name: 'Red' },
+  { bg: '#1368CE', hover: '#0F57B0', shape: 'diamond', name: 'Blue' },
+  { bg: '#D89E00', hover: '#B88500', shape: 'circle', name: 'Yellow' },
+  { bg: '#26890C', hover: '#1F6F0A', shape: 'square', name: 'Green' }
+];
+
+const SHAPE_ICONS = {
+  triangle: () => (
+    <div className="w-0 h-0 border-l-[24px] border-l-transparent border-r-[24px] border-r-transparent border-b-[40px] border-b-white"></div>
+  ),
+  diamond: () => (
+    <div className="w-12 h-12 bg-white transform rotate-45"></div>
+  ),
+  circle: () => (
+    <div className="w-16 h-16 bg-white rounded-full"></div>
+  ),
+  square: () => (
+    <div className="w-16 h-16 bg-white"></div>
+  )
+};
 
 const QuizPlay = () => {
   const { code } = useParams();
   const navigate = useNavigate();
+  
   const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState(null);
@@ -18,72 +43,150 @@ const QuizPlay = () => {
   const [loading, setLoading] = useState(true);
   const [answered, setAnswered] = useState(false);
   const [result, setResult] = useState(null);
-  const [participantId, setParticipantId] = useState(null);
   const [startTime, setStartTime] = useState(null);
+  const [score, setScore] = useState(0);
+  const [showAnswerReveal, setShowAnswerReveal] = useState(false);
+  const wsRef = useRef(null);
+  const [answeredCount, setAnsweredCount] = useState(0);
+  const [totalParticipants, setTotalParticipants] = useState(0);
+  const [questionStarted, setQuestionStarted] = useState(false);
+  
+  const isAdmin = localStorage.getItem('isAdmin') === 'true';
+  const participantId = localStorage.getItem('participantId');
 
-  useEffect(() => {
-    // Prevent right-click
-    const preventRightClick = (e) => e.preventDefault();
-    document.addEventListener('contextmenu', preventRightClick);
+  const fetchQuestions = useCallback(async () => {
+    try {
+      const pid = isAdmin ? 'admin' : participantId;
+      const response = await axios.get(`${API}/quiz/${code}/questions`, {
+        params: { participantId: pid }
+      });
+      
+      console.log('Questions loaded:', response.data);
+      setQuestions(response.data.questions || []);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching questions:', error);
+      toast.error('Failed to load quiz questions');
+      navigate('/join');
+    }
+  }, [code, navigate, isAdmin, participantId]);
 
-    // Detect tab switch
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        toast.warning('Tab switch detected!');
+  const connectWebSocket = useCallback(() => {
+    const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+    const socket = new WebSocket(`${wsUrl}/ws/${code}`);
+    wsRef.current = socket;
+
+    socket.onopen = () => {
+      console.log('✓ Quiz WebSocket connected');
+      
+      if (isAdmin) {
+        socket.send(JSON.stringify({ type: 'admin_joined', code }));
       }
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log('Quiz WebSocket message:', data);
+      
+      switch (data.type) {
+        case 'answer_count':
+          setAnsweredCount(data.answeredCount);
+          setTotalParticipants(data.totalParticipants);
+          break;
+          
+        case 'show_answer':
+          setShowAnswerReveal(true);
+          if (!isAdmin && result?.correct) {
+            confetti({
+              particleCount: 100,
+              spread: 70,
+              origin: { y: 0.6 }
+            });
+          }
+          break;
+          
+        case 'show_leaderboard':
+          navigate(`/leaderboard/${code}?question=${currentIndex}`);
+          break;
+          
+        case 'next_question':
+          const nextIdx = currentIndex + 1;
+          if (nextIdx < questions.length) {
+            // Reset for next question
+            setCurrentIndex(nextIdx);
+            setQuestionStarted(false);
+            setAnswered(false);
+            setResult(null);
+            setSelectedOption(null);
+            setShowAnswerReveal(false);
+            setAnsweredCount(0);
+          } else {
+            // Quiz complete
+            navigate(`/podium/${code}`);
+          }
+          break;
+
+        case 'ping':
+          socket.send(JSON.stringify({ type: 'pong' }));
+          break;
+          
+        default:
+          break;
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error('Quiz WebSocket error:', error);
+    };
+
+    socket.onclose = () => {
+      console.log('Quiz WebSocket disconnected');
+      setTimeout(connectWebSocket, 3000);
+    };
 
     return () => {
-      document.removeEventListener('contextmenu', preventRightClick);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
     };
-  }, []);
+  }, [code, currentIndex, navigate, questions.length, isAdmin, result]);
 
   useEffect(() => {
-    const pid = localStorage.getItem('participantId');
-    if (!pid) {
+    if (!participantId && !isAdmin) {
       toast.error('Please join the quiz first');
       navigate('/join');
       return;
     }
-    setParticipantId(pid);
-    fetchQuestions(pid);
-  }, []);
+    
+    fetchQuestions();
+  }, [participantId, isAdmin, navigate, fetchQuestions]);
 
   useEffect(() => {
-    if (questions.length > 0 && currentIndex < questions.length) {
-      setTimeLeft(questions[currentIndex].timeLimit);
-      setStartTime(Date.now());
-      setSelectedOption(null);
-      setAnswered(false);
-      setResult(null);
+    if (questions.length > 0) {
+      const cleanup = connectWebSocket();
+      return cleanup;
     }
-  }, [currentIndex, questions]);
+  }, [questions.length, connectWebSocket]);
 
   useEffect(() => {
-    if (timeLeft > 0 && !answered) {
+    if (questions.length > 0 && currentIndex < questions.length && !questionStarted) {
+      setQuestionStarted(true);
+      setTimeLeft(questions[currentIndex].timeLimit || 20);
+      setStartTime(Date.now());
+    }
+  }, [currentIndex, questions, questionStarted]);
+
+  useEffect(() => {
+    if (timeLeft > 0 && !answered && questionStarted && !isAdmin) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
-    } else if (timeLeft === 0 && !answered && questions.length > 0) {
+    } else if (timeLeft === 0 && !answered && questions.length > 0 && questionStarted && !isAdmin) {
       handleAutoSubmit();
     }
-  }, [timeLeft, answered]);
+  }, [timeLeft, answered, questions.length, questionStarted, isAdmin]);
 
-  const fetchQuestions = async (pid) => {
-    try {
-      const response = await axios.get(`${API}/quiz/${code}/questions?participantId=${pid}`);
-      setQuestions(response.data.questions);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching questions:', error);
-      toast.error('Failed to load quiz');
-      navigate('/join');
-    }
-  };
-
-  const handleAutoSubmit = async () => {
-    if (answered) return;
+  const handleAutoSubmit = useCallback(async () => {
+    if (answered || isAdmin) return;
     setAnswered(true);
     
     const timeTaken = (Date.now() - startTime) / 1000;
@@ -92,29 +195,27 @@ const QuizPlay = () => {
       const response = await axios.post(`${API}/submit-answer`, {
         participantId,
         quizCode: code,
-        questionIndex: questions[currentIndex].index,
+        questionIndex: currentIndex,
         selectedOption: selectedOption !== null ? selectedOption : -1,
         timeTaken
       });
       
       setResult(response.data);
-      toast.error('Time up!');
+      toast.error("⏰ Time's up!");
       
-      setTimeout(() => {
-        if (currentIndex < questions.length - 1) {
-          setCurrentIndex(currentIndex + 1);
-        } else {
-          navigate(`/leaderboard/${code}`);
-        }
-      }, 2000);
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ 
+          type: 'answer_submitted',
+          participantId 
+        }));
+      }
     } catch (error) {
-      console.error('Error submitting answer:', error);
-      toast.error('Failed to submit answer');
+      console.error('Error auto-submitting answer:', error);
     }
-  };
+  }, [answered, isAdmin, startTime, participantId, code, currentIndex, selectedOption]);
 
   const handleSubmit = async () => {
-    if (selectedOption === null || answered) return;
+    if (selectedOption === null || answered || isAdmin) return;
     
     setAnswered(true);
     const timeTaken = (Date.now() - startTime) / 1000;
@@ -123,7 +224,7 @@ const QuizPlay = () => {
       const response = await axios.post(`${API}/submit-answer`, {
         participantId,
         quizCode: code,
-        questionIndex: questions[currentIndex].index,
+        questionIndex: currentIndex,
         selectedOption,
         timeTaken
       });
@@ -131,152 +232,367 @@ const QuizPlay = () => {
       setResult(response.data);
       
       if (response.data.correct) {
-        toast.success('Correct! +10 points');
+        const newScore = score + response.data.points;
+        setScore(newScore);
+        toast.success(`🎉 Correct! +${response.data.points} points`);
       } else {
-        toast.error('Wrong answer');
+        toast.error('❌ Wrong answer');
       }
       
-      setTimeout(() => {
-        if (currentIndex < questions.length - 1) {
-          setCurrentIndex(currentIndex + 1);
-        } else {
-          navigate(`/leaderboard/${code}`);
-        }
-      }, 2000);
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ 
+          type: 'answer_submitted',
+          participantId 
+        }));
+      }
     } catch (error) {
       console.error('Error submitting answer:', error);
       toast.error('Failed to submit answer');
     }
   };
 
+  const handleShowAnswer = () => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'show_answer' }));
+    }
+  };
+
+  const handleShowLeaderboard = () => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'show_leaderboard' }));
+    }
+  };
+
   if (loading) {
     return (
-      <div className="quiz-theme min-h-screen flex items-center justify-center">
-        <div className="w-16 h-16 border-4 border-[#FF6B00] border-t-transparent rounded-full animate-spin" data-testid="loading-spinner"></div>
+      <div className="min-h-screen bg-[#46178F] flex items-center justify-center">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          className="w-20 h-20 border-8 border-white border-t-transparent rounded-full"
+        />
       </div>
     );
   }
 
   if (questions.length === 0) {
     return (
-      <div className="quiz-theme min-h-screen flex items-center justify-center p-6">
-        <div className="glass-card rounded-2xl p-8 text-center" data-testid="no-questions-message">
-          <p className="text-xl">No questions available</p>
-        </div>
+      <div className="min-h-screen bg-[#46178F] flex items-center justify-center">
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          className="bg-white rounded-3xl p-8 text-center shadow-2xl max-w-md"
+        >
+          <div className="text-6xl mb-4">📝</div>
+          <p className="text-2xl font-bold text-gray-800 mb-2">No questions available</p>
+          <p className="text-gray-600">Please check the quiz configuration</p>
+          <Button
+            onClick={() => navigate('/admin')}
+            className="mt-6"
+          >
+            Back to Admin
+          </Button>
+        </motion.div>
       </div>
     );
   }
 
   const currentQuestion = questions[currentIndex];
-  const progress = ((currentIndex + 1) / questions.length) * 100;
 
   return (
-    <div className="quiz-theme min-h-screen flex flex-col">
-      {/* Progress Bar */}
-      <div className="w-full h-2 bg-black/40">
-        <motion.div 
-          className="h-full bg-gradient-to-r from-[#FF6B00] to-[#9D00FF]"
-          initial={{ width: 0 }}
-          animate={{ width: `${progress}%` }}
-          transition={{ duration: 0.5 }}
-          data-testid="progress-bar"
-        />
+    <div className="min-h-screen bg-[#46178F] relative overflow-hidden">
+      {/* Animated Background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {[...Array(30)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute"
+            initial={{ 
+              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1920),
+              y: -50,
+              scale: Math.random() * 0.5 + 0.5
+            }}
+            animate={{ 
+              y: (typeof window !== 'undefined' ? window.innerHeight : 1080) + 50,
+            }}
+            transition={{ 
+              duration: Math.random() * 5 + 5,
+              repeat: Infinity,
+              delay: Math.random() * 5
+            }}
+          >
+            <div className="w-2 h-2 bg-white/30 rounded-full" />
+          </motion.div>
+        ))}
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-2xl">
-          {/* Timer */}
+      {/* Top Bar */}
+      <div className="absolute top-0 left-0 right-0 bg-white/10 backdrop-blur-md py-4 px-8 flex items-center justify-between z-10">
+        <div className="flex items-center gap-4">
+          <div className="text-white text-2xl font-bold">
+            Question {currentIndex + 1} of {questions.length}
+          </div>
+          
+          {!isAdmin && (
+            <div className="flex items-center gap-2 bg-white/20 rounded-full px-4 py-2">
+              <Trophy className="w-5 h-5 text-yellow-300" />
+              <span className="text-white text-xl font-semibold">{score}</span>
+            </div>
+          )}
+        </div>
+
+        {isAdmin && (
+          <div className="flex items-center gap-4">
+            <div className="text-white text-lg font-semibold flex items-center gap-2 bg-white/20 rounded-full px-4 py-2">
+              <Users className="w-5 h-5" />
+              <span>{answeredCount} / {totalParticipants}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Main Content */}
+      <div className="pt-24 pb-12 px-8">
+        <div className="max-w-6xl mx-auto">
+          {/* Question Card */}
           <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            className="mb-6 flex justify-center"
+            key={`question-${currentIndex}`}
+            initial={{ scale: 0.8, opacity: 0, y: 50 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ type: "spring", duration: 0.6 }}
+            className="bg-white rounded-3xl p-12 shadow-2xl mb-12 text-center relative overflow-hidden"
           >
-            <div 
-              className={`flex items-center gap-3 px-6 py-3 rounded-full font-bold text-xl ${
-                timeLeft <= 5 ? 'bg-red-500 pulse-glow' : 'bg-[#9D00FF]'
-              }`}
-              data-testid="timer-display"
+            {/* Timer Circle */}
+            {!isAdmin && (
+              <motion.div
+                className="inline-block mb-8"
+                animate={timeLeft <= 5 ? { 
+                  scale: [1, 1.2, 1],
+                } : {}}
+                transition={{ duration: 0.5, repeat: timeLeft <= 5 ? Infinity : 0 }}
+              >
+                <div className={`w-32 h-32 rounded-full flex items-center justify-center text-5xl font-black transition-all duration-300 ${
+                  timeLeft <= 5 ? 'bg-red-500 text-white animate-pulse' : 
+                  timeLeft <= 10 ? 'bg-orange-500 text-white' :
+                  'bg-gray-200 text-gray-700'
+                }`}>
+                  {timeLeft}
+                </div>
+              </motion.div>
+            )}
+
+            <motion.h2 
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="text-5xl font-black text-gray-900 leading-tight px-4"
+              style={{ fontFamily: 'Fredoka, sans-serif' }}
             >
-              <Timer className="w-6 h-6" />
-              {timeLeft}s
+              {currentQuestion.question}
+            </motion.h2>
+
+            {/* Progress indicator */}
+            <div className="absolute bottom-0 left-0 right-0 h-2 bg-gray-200">
+              <motion.div
+                className="h-full bg-purple-600"
+                initial={{ width: '0%' }}
+                animate={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
+                transition={{ duration: 0.5 }}
+              />
             </div>
           </motion.div>
 
-          {/* Question Card */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentIndex}
-              initial={{ opacity: 0, x: 100 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -100 }}
-              className="glass-card rounded-3xl p-8 mb-6"
-            >
-              <div className="mb-4 flex justify-between items-center">
-                <span className="text-sm font-bold text-[#00FF94]" data-testid="question-counter">
-                  Question {currentIndex + 1} of {questions.length}
-                </span>
-              </div>
+          {/* Answer Options Grid */}
+          <div className="grid grid-cols-2 gap-8">
+            {currentQuestion.options.map((option, index) => {
+              const colorScheme = ANSWER_COLORS[index];
+              const isSelected = selectedOption === index;
+              const isCorrect = showAnswerReveal && result && result.correctAnswer === index;
+              const isWrong = showAnswerReveal && result && selectedOption === index && !result.correct;
+              const ShapeIcon = SHAPE_ICONS[colorScheme.shape];
 
-              <h2 
-                className="text-2xl md:text-3xl font-bold mb-8"
-                style={{ fontFamily: 'Fredoka, sans-serif' }}
-                data-testid="question-text"
+              let buttonStyle = {};
+              let borderStyle = '';
+              
+              if (showAnswerReveal) {
+                if (isCorrect) {
+                  buttonStyle = { backgroundColor: '#10B981' };
+                  borderStyle = 'ring-8 ring-green-400';
+                } else if (isWrong) {
+                  buttonStyle = { backgroundColor: '#EF4444' };
+                  borderStyle = 'ring-8 ring-red-400';
+                } else {
+                  buttonStyle = { backgroundColor: colorScheme.bg, opacity: 0.6 };
+                }
+              } else {
+                buttonStyle = { 
+                  backgroundColor: isSelected ? colorScheme.hover : colorScheme.bg 
+                };
+                if (isSelected) {
+                  borderStyle = 'ring-8 ring-white scale-105';
+                }
+              }
+
+              return (
+                <motion.button
+                  key={index}
+                  initial={{ scale: 0, opacity: 0, rotate: -90 }}
+                  animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                  transition={{ 
+                    delay: 0.3 + index * 0.1, 
+                    type: "spring",
+                    stiffness: 200
+                  }}
+                  whileHover={!answered && !isAdmin ? { scale: 1.05, y: -5 } : {}}
+                  whileTap={!answered && !isAdmin ? { scale: 0.95 } : {}}
+                  onClick={() => !answered && !isAdmin && setSelectedOption(index)}
+                  disabled={answered || isAdmin}
+                  style={buttonStyle}
+                  className={`
+                    relative overflow-hidden rounded-3xl p-12
+                    transition-all duration-300 shadow-2xl
+                    ${borderStyle}
+                    ${(answered || isAdmin) ? 'cursor-not-allowed' : 'cursor-pointer'}
+                  `}
+                >
+                  {/* Shape Icon */}
+                  <div className="absolute top-8 left-8">
+                    <ShapeIcon />
+                  </div>
+
+                  {/* Answer Text */}
+                  <div className="text-left pl-24">
+                    <span className="text-4xl font-bold text-white">
+                      {option}
+                    </span>
+                  </div>
+
+                  {/* Result Icons */}
+                  <AnimatePresence>
+                    {showAnswerReveal && (
+                      <motion.div
+                        initial={{ scale: 0, rotate: -180 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ type: "spring", delay: 0.2 }}
+                        className="absolute top-8 right-8"
+                      >
+                        {isCorrect && (
+                          <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center">
+                            <Check className="w-10 h-10 text-green-500" strokeWidth={4} />
+                          </div>
+                        )}
+                        {isWrong && (
+                          <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center">
+                            <X className="w-10 h-10 text-red-500" strokeWidth={4} />
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Selection Pulse Effect */}
+                  {isSelected && !showAnswerReveal && (
+                    <motion.div
+                      className="absolute inset-0 bg-white"
+                      initial={{ opacity: 0.3 }}
+                      animate={{ opacity: [0.3, 0, 0.3] }}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                    />
+                  )}
+                </motion.button>
+              );
+            })}
+          </div>
+
+          {/* Submit Button for Users */}
+          <AnimatePresence>
+            {!isAdmin && !answered && selectedOption !== null && (
+              <motion.div
+                initial={{ y: 50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 50, opacity: 0 }}
+                className="flex justify-center mt-12"
               >
-                {currentQuestion.question}
-              </h2>
-
-              <div className="space-y-4">
-                {currentQuestion.options.map((option, index) => {
-                  const isSelected = selectedOption === index;
-                  const isCorrect = result && result.correctAnswer === index;
-                  const isWrong = result && selectedOption === index && !result.correct;
-                  
-                  let buttonClass = 'bg-white/10 border-2 border-white/20 hover:border-[#FF6B00] hover:bg-white/20';
-                  
-                  if (answered) {
-                    if (isCorrect) {
-                      buttonClass = 'bg-green-500 border-green-500';
-                    } else if (isWrong) {
-                      buttonClass = 'bg-red-500 border-red-500';
-                    }
-                  } else if (isSelected) {
-                    buttonClass = 'bg-[#FF6B00] border-[#FF6B00]';
-                  }
-
-                  return (
-                    <motion.button
-                      key={index}
-                      whileHover={!answered ? { scale: 1.02 } : {}}
-                      whileTap={!answered ? { scale: 0.98 } : {}}
-                      onClick={() => !answered && setSelectedOption(index)}
-                      disabled={answered}
-                      className={`w-full p-4 rounded-xl font-semibold text-lg transition-all flex items-center justify-between ${buttonClass}`}
-                      data-testid={`option-${index}`}
-                    >
-                      <span>{option}</span>
-                      {answered && isCorrect && <Check className="w-6 h-6" />}
-                      {answered && isWrong && <X className="w-6 h-6" />}
-                    </motion.button>
-                  );
-                })}
-              </div>
-            </motion.div>
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Button
+                    onClick={handleSubmit}
+                    size="lg"
+                    className="bg-white text-purple-600 hover:bg-gray-100 font-black text-3xl px-16 py-8 rounded-full shadow-2xl"
+                    style={{ fontFamily: 'Fredoka, sans-serif' }}
+                  >
+                    <Zap className="w-8 h-8 mr-3" />
+                    Submit Answer
+                  </Button>
+                </motion.div>
+              </motion.div>
+            )}
           </AnimatePresence>
 
-          {/* Submit Button */}
-          {!answered && (
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={handleSubmit}
-              disabled={selectedOption === null}
-              className="w-full bg-[#00FF94] text-black font-bold py-5 rounded-full border-b-4 border-[#00CC77] hover:brightness-110 transition-all text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ fontFamily: 'Fredoka, sans-serif' }}
-              data-testid="submit-answer-button"
+          {/* Waiting Message for Users */}
+          {!isAdmin && answered && !showAnswerReveal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center mt-12"
             >
-              Submit Answer
-            </motion.button>
+              <motion.p
+                animate={{ scale: [1, 1.05, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="text-white text-2xl font-semibold"
+              >
+                ⏳ Waiting for others to answer...
+              </motion.p>
+            </motion.div>
           )}
+
+          {/* Admin Controls */}
+          <AnimatePresence>
+            {isAdmin && (
+              <motion.div
+                initial={{ y: 50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="flex justify-center gap-6 mt-12"
+              >
+                {!showAnswerReveal && (
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Button
+                      onClick={handleShowAnswer}
+                      size="lg"
+                      className="bg-orange-500 hover:bg-orange-600 text-white font-black text-2xl px-12 py-8 rounded-full shadow-2xl"
+                      style={{ fontFamily: 'Fredoka, sans-serif' }}
+                    >
+                      Show Answers
+                    </Button>
+                  </motion.div>
+                )}
+
+                {showAnswerReveal && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Button
+                      onClick={handleShowLeaderboard}
+                      size="lg"
+                      className="bg-blue-500 hover:bg-blue-600 text-white font-black text-2xl px-12 py-8 rounded-full shadow-2xl flex items-center gap-4"
+                      style={{ fontFamily: 'Fredoka, sans-serif' }}
+                    >
+                      <BarChart3 className="w-8 h-8" />
+                      Show Leaderboard
+                    </Button>
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>
