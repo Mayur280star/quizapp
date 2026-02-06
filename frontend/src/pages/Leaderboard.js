@@ -29,7 +29,6 @@ const Leaderboard = () => {
   useEffect(() => {
     fetchResults();
     
-    // Celebration effect
     setTimeout(() => {
       setShowCelebration(true);
       triggerConfetti();
@@ -48,7 +47,7 @@ const Leaderboard = () => {
       setTotalQuestions(quizRes.data.questions?.length || 0);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching leaderboard:', error);
+      console.error('Fetch results error:', error);
       toast.error('Failed to load leaderboard');
       setLoading(false);
     }
@@ -84,12 +83,13 @@ const Leaderboard = () => {
   };
 
   const connectWebSocket = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
     const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
     const socket = new WebSocket(`${wsUrl}/ws/${code}`);
     wsRef.current = socket;
 
     socket.onopen = () => {
-      console.log('✓ Leaderboard WebSocket connected');
       if (isAdmin) {
         socket.send(JSON.stringify({ type: 'admin_joined', code }));
       }
@@ -115,7 +115,7 @@ const Leaderboard = () => {
     };
 
     socket.onclose = () => {
-      console.log('Leaderboard WebSocket disconnected');
+      wsRef.current = null;
       setTimeout(connectWebSocket, 3000);
     };
 
@@ -172,7 +172,6 @@ const Leaderboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 relative overflow-hidden">
-      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(100)].map((_, i) => (
           <motion.div
@@ -200,10 +199,8 @@ const Leaderboard = () => {
         ))}
       </div>
 
-      {/* Main Content */}
       <div className="relative z-10 min-h-screen p-8">
         <div className="max-w-7xl mx-auto">
-          {/* Header */}
           <motion.div
             initial={{ y: -100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -243,7 +240,6 @@ const Leaderboard = () => {
             </motion.p>
           </motion.div>
 
-          {/* Top 3 Podium */}
           <AnimatePresence>
             {showCelebration && topThree.length > 0 && (
               <motion.div
@@ -251,7 +247,6 @@ const Leaderboard = () => {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex items-end justify-center gap-8 mb-12 px-4"
               >
-                {/* 2nd Place */}
                 {topThree[1] && (
                   <motion.div
                     initial={{ y: 200, opacity: 0 }}
@@ -290,7 +285,6 @@ const Leaderboard = () => {
                   </motion.div>
                 )}
 
-                {/* 1st Place - WINNER! */}
                 {topThree[0] && (
                   <motion.div
                     initial={{ y: 200, opacity: 0 }}
@@ -386,145 +380,141 @@ const Leaderboard = () => {
                   </motion.div>
                 )}
 
-                {/* 3rd Place */}
                 {topThree[2] && (
                   <motion.div
                     initial={{ y: 200, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: 0.5, type: "spring" }}
-                    className="flex flex-col items-center w-72"
-                  >
-                    <motion.div
-                      animate={{ y: [0, -8, 0] }}
-                      transition={{ duration: 2.5, repeat: Infinity }}
-                      className="mb-6"
-                    >
-                      <div className="w-28 h-28 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-white/30">
-                        <span className="text-5xl font-black text-white">
-                          {topThree[2].name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                    </motion.div>
-
-                    <div className={`w-full bg-gradient-to-b ${getPodiumColor(3)} rounded-t-3xl p-8 shadow-2xl ${getPodiumHeight(3)}`}>
-                      <div className="text-center">
-                        <div className="text-9xl font-black text-white mb-3">3</div>
-                        <h3 className="text-3xl font-bold text-white mb-3 truncate">
-                          {topThree[2].name}
-                        </h3>
-                        <div className="bg-white/20 rounded-full px-6 py-3">
-                          <div className="flex items-center justify-center gap-2">
-                            <Star className="w-6 h-6 text-yellow-200" />
-                            <span className="text-2xl font-black text-white">
-                              {topThree[2].score}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Other Players */}
-          {others.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.7 }}
-              className="space-y-4 mb-12 max-w-4xl mx-auto"
-            >
-              {others.map((entry, index) => (
+                  className="flex flex-col items-center w-72"
+              >
                 <motion.div
-                  key={entry.participantId}
-                  initial={{ x: -100, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  transition={{ delay: 0.8 + index * 0.05 }}
-                  className="bg-white/10 backdrop-blur-md rounded-2xl p-6 shadow-xl hover:bg-white/20 transition-all"
+                  animate={{ y: [0, -8, 0] }}
+                  transition={{ duration: 2.5, repeat: Infinity }}
+                  className="mb-6"
                 >
-                  <div className="flex items-center gap-6">
-                    <div className="w-16 flex-shrink-0">
-                      <div className="w-14 h-14 rounded-full bg-purple-500 flex items-center justify-center">
-                        <span className="text-white font-bold text-2xl">{entry.rank}</span>
-                      </div>
-                    </div>
+                  <div className="w-28 h-28 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-white/30">
+                    <span className="text-5xl font-black text-white">
+                      {topThree[2].name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                </motion.div>
 
-                    <div className="flex-1">
-                      <h3 className="text-2xl font-bold text-white truncate">
-                        {entry.name}
-                      </h3>
-                    </div>
-
-                    <div className="text-right flex-shrink-0">
-                      <div className="flex items-center gap-2">
-                        <Star className="w-6 h-6 text-yellow-400" />
-                        <span className="text-3xl font-black text-yellow-400">
-                          {entry.score}
+                <div className={`w-full bg-gradient-to-b ${getPodiumColor(3)} rounded-t-3xl p-8 shadow-2xl ${getPodiumHeight(3)}`}>
+                  <div className="text-center">
+                    <div className="text-9xl font-black text-white mb-3">3</div>
+                    <h3 className="text-3xl font-bold text-white mb-3 truncate">
+                      {topThree[2].name}
+                    </h3>
+                    <div className="bg-white/20 rounded-full px-6 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <Star className="w-6 h-6 text-yellow-200" />
+                        <span className="text-2xl font-black text-white">
+                          {topThree[2].score}
                         </span>
                       </div>
                     </div>
                   </div>
-                </motion.div>
-              ))}
-            </motion.div>
-          )}
-
-          {/* Admin Controls */}
-          {isAdmin && (
-            <motion.div
-              initial={{ y: 50, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 1 }}
-              className="text-center"
-            >
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Button
-                  onClick={handleNext}
-                  size="lg"
-                  className="bg-white text-purple-600 hover:bg-gray-100 font-black text-3xl px-16 py-8 rounded-full shadow-2xl flex items-center gap-4 mx-auto"
-                  style={{ fontFamily: 'Fredoka, sans-serif' }}
-                >
-                  {isFinalLeaderboard ? (
-                    <>
-                      <Trophy className="w-10 h-10" />
-                      Show Winners
-                    </>
-                  ) : (
-                    <>
-                      Next Question
-                      <ArrowRight className="w-10 h-10" />
-                    </>
-                  )}
-                </Button>
+                </div>
               </motion.div>
-            </motion.div>
-          )}
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {!isAdmin && (
+      {others.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.7 }}
+          className="space-y-4 mb-12 max-w-4xl mx-auto"
+        >
+          {others.map((entry, index) => (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1 }}
-              className="text-center"
+              key={entry.participantId}
+              initial={{ x: -100, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.8 + index * 0.05 }}
+              className="bg-white/10 backdrop-blur-md rounded-2xl p-6 shadow-xl hover:bg-white/20 transition-all"
             >
-              <motion.p
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
-                className="text-white/80 text-2xl font-semibold"
-              >
-                ⏳ Waiting for host to continue...
-              </motion.p>
-            </motion.div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
+              <div className="flex items-center gap-6">
+                <div className="w-16 flex-shrink-0">
+                  <div className="w-14 h-14 rounded-full bg-purple-500 flex items-center justify-center">
+                    <span className="text-white font-bold text-2xl">{entry.rank}</span>
+                  </div>
+                </div>
 
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold text-white truncate">
+                    {entry.name}
+                  </h3>
+                </div>
+
+                <div className="text-right flex-shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Star className="w-6 h-6 text-yellow-400" />
+                    <span className="text-3xl font-black text-yellow-400">
+                      {entry.score}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
+      )}
+
+      {isAdmin && (
+        <motion.div
+          initial={{ y: 50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 1 }}
+          className="text-center"
+        >
+          <motion.div
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Button
+              onClick={handleNext}
+              size="lg"
+              className="bg-white text-purple-600 hover:bg-gray-100 font-black text-3xl px-16 py-8 rounded-full shadow-2xl flex items-center gap-4 mx-auto"
+              style={{ fontFamily: 'Fredoka, sans-serif' }}
+            >
+              {isFinalLeaderboard ? (
+                <>
+                  <Trophy className="w-10 h-10" />
+                  Show Winners
+                </>
+              ) : (
+                <>
+                  Next Question
+                  <ArrowRight className="w-10 h-10" />
+                </>
+              )}
+            </Button>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {!isAdmin && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1 }}
+          className="text-center"
+        >
+          <motion.p
+            animate={{ scale: [1, 1.05, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="text-white/80 text-2xl font-semibold"
+          >
+            ⏳ Waiting for host to continue...
+          </motion.p>
+        </motion.div>
+      )}
+    </div>
+  </div>
+</div>
+);
+};
 export default Leaderboard;

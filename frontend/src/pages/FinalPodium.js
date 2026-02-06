@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+// /src/pages/FinalPodium.js
+
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Crown, Medal, Star, Home, BarChart3, X } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Trophy, Crown, Star, Home } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
 
 const FinalPodium = () => {
@@ -17,15 +19,10 @@ const FinalPodium = () => {
   const [winners, setWinners] = useState([]);
   const [quizStats, setQuizStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showSpotlight, setShowSpotlight] = useState(true);
-  const [showStats, setShowStats] = useState(false);
-  
-  const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
   useEffect(() => {
     fetchResults();
     
-    // Massive celebration
     setTimeout(() => triggerMassiveConfetti(), 1000);
   }, []);
 
@@ -36,7 +33,7 @@ const FinalPodium = () => {
       setQuizStats(response.data.stats);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching results:', error);
+      console.error('Fetch final results error:', error);
       toast.error('Failed to load results');
       setLoading(false);
     }
@@ -71,17 +68,6 @@ const FinalPodium = () => {
     }, 250);
   };
 
-  const handleEndQuiz = async () => {
-    try {
-      await axios.post(`${API}/quiz/${code}/end`);
-      toast.success('Quiz ended successfully');
-      navigate('/admin');
-    } catch (error) {
-      console.error('Error ending quiz:', error);
-      toast.error('Failed to end quiz');
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex items-center justify-center">
@@ -96,7 +82,6 @@ const FinalPodium = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 relative overflow-hidden">
-      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(100)].map((_, i) => (
           <motion.div
@@ -124,10 +109,8 @@ const FinalPodium = () => {
         ))}
       </div>
 
-      {/* Main Content */}
       <div className="relative z-10 min-h-screen p-8">
         <div className="max-w-7xl mx-auto">
-          {/* Header */}
           <motion.div
             initial={{ y: -100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -167,229 +150,193 @@ const FinalPodium = () => {
             </motion.p>
           </motion.div>
 
-          {/* Winner Spotlight */}
-          <AnimatePresence>
-            {showSpotlight && winners.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                className="mb-12"
-              >
-                {/* Winner Podium */}
-                <div className="flex items-end justify-center gap-8 mb-12">
-                  {/* 2nd Place */}
-                  {winners[1] && (
+          {winners.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="mb-12"
+            >
+              <div className="flex items-end justify-center gap-8 mb-12">
+                {winners[1] && (
+                  <motion.div
+                    initial={{ y: 200, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.3, type: "spring" }}
+                    className="flex flex-col items-center w-72"
+                  >
                     <motion.div
-                      initial={{ y: 200, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.3, type: "spring" }}
-                      className="flex flex-col items-center w-72"
+                      animate={{ y: [0, -10, 0] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="mb-6"
                     >
-                      <motion.div
-                        animate={{ y: [0, -10, 0] }}
-                        transition={{ duration: 2, repeat: Infinity }}
-                        className="mb-6"
-                      >
-                        <div className="w-28 h-28 bg-gradient-to-br from-gray-300 to-gray-500 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-white/30">
-                          <span className="text-5xl font-black text-white">
-                            {winners[1].name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      </motion.div>
+                      <div className="w-28 h-28 bg-gradient-to-br from-gray-300 to-gray-500 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-white/30">
+                        <span className="text-5xl font-black text-white">
+                          {winners[1].name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    </motion.div>
 
-                      <div className="w-full bg-gradient-to-b from-gray-300 to-gray-500 rounded-t-3xl p-8 shadow-2xl h-64">
-                        <div className="text-center">
-                          <div className="text-9xl font-black text-white mb-3">2</div>
-                          <h3 className="text-3xl font-bold text-white mb-3 truncate">
-                            {winners[1].name}
-                          </h3>
-                          <div className="bg-white/20 rounded-full px-6 py-3">
-                            <div className="flex items-center justify-center gap-2">
-                              <Star className="w-6 h-6 text-yellow-200" />
-                              <span className="text-2xl font-black text-white">
-                                {winners[1].score}
-                              </span>
-                            </div>
+                    <div className="w-full bg-gradient-to-b from-gray-300 to-gray-500 rounded-t-3xl p-8 shadow-2xl h-64">
+                      <div className="text-center">
+                        <div className="text-9xl font-black text-white mb-3">2</div>
+                        <h3 className="text-3xl font-bold text-white mb-3 truncate">
+                          {winners[1].name}
+                        </h3>
+                        <div className="bg-white/20 rounded-full px-6 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <Star className="w-6 h-6 text-yellow-200" />
+                            <span className="text-2xl font-black text-white">
+                              {winners[1].score}
+                            </span>
                           </div>
                         </div>
                       </div>
-                    </motion.div>
-                  )}
+                    </div>
+                  </motion.div>
+                )}
 
-                  {/* 1st Place - WINNER! */}
-                  {winners[0] && (
+                {winners[0] && (
+                  <motion.div
+                    initial={{ y: 200, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.1, type: "spring" }}
+                    className="flex flex-col items-center w-80"
+                  >
                     <motion.div
-                      initial={{ y: 200, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.1, type: "spring" }}
-                      className="flex flex-col items-center w-80"
+                      animate={{ 
+                        y: [0, -20, 0],
+                        rotate: [0, 5, -5, 0]
+                      }}
+                      transition={{ duration: 3, repeat: Infinity }}
+                      className="mb-6 relative"
                     >
                       <motion.div
                         animate={{ 
-                          y: [0, -20, 0],
-                          rotate: [0, 5, -5, 0]
+                          scale: [1, 1.3, 1],
+                          opacity: [0.3, 0.6, 0.3]
                         }}
-                        transition={{ duration: 3, repeat: Infinity }}
-                        className="mb-6 relative"
-                      >
-                        {/* Spotlight effect */}
-                        <motion.div
-                          animate={{ 
-                            scale: [1, 1.3, 1],
-                            opacity: [0.3, 0.6, 0.3]
-                          }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                          className="absolute -inset-8 bg-gradient-to-r from-yellow-300 via-yellow-400 to-orange-400 rounded-full blur-2xl"
-                        />
-                        
-                        <div className="relative w-36 h-36 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center shadow-2xl ring-8 ring-yellow-300/50">
-                          <span className="text-7xl font-black text-white">
-                            {winners[0].name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        
-                        <motion.div
-                          animate={{ 
-                            rotate: [0, -10, 10, -10, 0],
-                            y: [0, -5, 0]
-                          }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                          className="absolute -top-12 left-1/2 transform -translate-x-1/2"
-                        >
-                          <Crown className="w-20 h-20 text-yellow-300 drop-shadow-2xl" />
-                        </motion.div>
-
-                        {/* Sparkles */}
-                        {[...Array(8)].map((_, i) => (
-                          <motion.div
-                            key={i}
-                            initial={{ scale: 0, opacity: 1 }}
-                            animate={{
-                              scale: [0, 1, 0],
-                              opacity: [1, 1, 0],
-                              x: Math.cos(i * 45 * Math.PI / 180) * 60,
-                              y: Math.sin(i * 45 * Math.PI / 180) * 60
-                            }}
-                            transition={{
-                              duration: 1.5,
-                              repeat: Infinity,
-                              delay: i * 0.1
-                            }}
-                            className="absolute top-1/2 left-1/2"
-                          >
-                            <Star className="w-6 h-6 text-yellow-300" />
-                          </motion.div>
-                        ))}
-                      </motion.div>
-
-                      <div className="w-full bg-gradient-to-b from-yellow-400 to-orange-600 rounded-t-3xl p-8 shadow-2xl h-80 relative overflow-hidden">
-                        {/* Shine effect */}
-                        <motion.div
-                          animate={{ x: ['-100%', '200%'] }}
-                          transition={{ duration: 2, repeat: Infinity, repeatDelay: 1 }}
-                          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-                          style={{ width: '50%' }}
-                        />
-                        
-                        <div className="text-center relative z-10">
-                          <motion.div
-                            animate={{ scale: [1, 1.1, 1] }}
-                            transition={{ duration: 1, repeat: Infinity }}
-                            className="text-[10rem] font-black text-white mb-3 drop-shadow-2xl leading-none"
-                          >
-                            1
-                          </motion.div>
-                          <h3 className="text-4xl font-bold text-white mb-4 truncate drop-shadow-lg">
-                            {winners[0].name}
-                          </h3>
-                          <div className="bg-white/40 backdrop-blur-sm rounded-full px-8 py-4 mb-3">
-                            <div className="flex items-center justify-center gap-3">
-                              <Star className="w-8 h-8 text-yellow-100" />
-                              <span className="text-4xl font-black text-white">
-                                {winners[0].score}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="absolute -inset-8 bg-gradient-to-r from-yellow-300 via-yellow-400 to-orange-400 rounded-full blur-2xl"
+                      />
+                      
+                      <div className="relative w-36 h-36 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center shadow-2xl ring-8 ring-yellow-300/50">
+                        <span className="text-7xl font-black text-white">
+                          {winners[0].name.charAt(0).toUpperCase()}
+                        </span>
                       </div>
-                    </motion.div>
-                  )}
-
-                  {/* 3rd Place */}
-                  {winners[2] && (
-                    <motion.div
-                      initial={{ y: 200, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.5, type: "spring" }}
-                      className="flex flex-col items-center w-72"
-                    >
+                      
                       <motion.div
-                        animate={{ y: [0, -8, 0] }}
-                        transition={{ duration: 2.5, repeat: Infinity }}
-                        className="mb-6"
+                        animate={{ 
+                          rotate: [0, -10, 10, -10, 0],
+                          y: [0, -5, 0]
+                        }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="absolute -top-12 left-1/2 transform -translate-x-1/2"
                       >
-                        <div className="w-28 h-28 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-white/30">
-                          <span className="text-5xl font-black text-white">
-                            {winners[2].name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
+                        <Crown className="w-20 h-20 text-yellow-300 drop-shadow-2xl" />
                       </motion.div>
 
-                      <div className="w-full bg-gradient-to-b from-orange-400 to-orange-600 rounded-t-3xl p-8 shadow-2xl h-56">
-                        <div className="text-center">
-                          <div className="text-9xl font-black text-white mb-3">3</div>
-                          <h3 className="text-3xl font-bold text-white mb-3 truncate">
-                            {winners[2].name}
-                          </h3>
-                          <div className="bg-white/20 rounded-full px-6 py-3">
-                            <div className="flex items-center justify-center gap-2">
-                              <Star className="w-6 h-6 text-yellow-200" />
-                              <span className="text-2xl font-black text-white">
-                                {winners[2].score}
-                              </span>
-                            </div>
+                      {[...Array(8)].map((_, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ scale: 0, opacity: 1 }}
+                          animate={{
+                            scale: [0, 1, 0],
+                            opacity: [1, 1, 0],
+                            x: Math.cos(i * 45 * Math.PI / 180) * 60,
+                            y: Math.sin(i * 45 * Math.PI / 180) * 60
+                          }}
+                          transition={{
+                            duration: 1.5,
+                            repeat: Infinity,
+                            delay: i * 0.1
+                          }}
+                          className="absolute top-1/2 left-1/2"
+                        >
+                          <Star className="w-6 h-6 text-yellow-300" />
+                        </motion.div>
+                      ))}
+                    </motion.div>
+
+                    <div className="w-full bg-gradient-to-b from-yellow-400 to-orange-600 rounded-t-3xl p-8 shadow-2xl h-80 relative overflow-hidden">
+                      <motion.div
+                        animate={{ x: ['-100%', '200%'] }}
+                        transition={{ duration: 2, repeat: Infinity, repeatDelay: 1 }}
+                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                        style={{ width: '50%' }}
+                      />
+                      
+                      <div className="text-center relative z-10">
+                        <motion.div
+                          animate={{ scale: [1, 1.1, 1] }}
+                          transition={{ duration: 1, repeat: Infinity }}
+                          className="text-[10rem] font-black text-white mb-3 drop-shadow-2xl leading-none"
+                        >
+                          1
+                        </motion.div>
+                        <h3 className="text-4xl font-bold text-white mb-4 truncate drop-shadow-lg">
+                          {winners[0].name}
+                        </h3>
+                        <div className="bg-white/40 backdrop-blur-sm rounded-full px-8 py-4 mb-3">
+                          <div className="flex items-center justify-center gap-3">
+                            <Star className="w-8 h-8 text-yellow-100" />
+                            <span className="text-4xl font-black text-white">
+                              {winners[0].score}
+                            </span>
                           </div>
                         </div>
                       </div>
-                    </motion.div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                    </div>
+                  </motion.div>
+                )}
 
-          {/* Action Buttons */}
+                {winners[2] && (
+                  <motion.div
+                    initial={{ y: 200, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.5, type: "spring" }}
+                    className="flex flex-col items-center w-72"
+                  >
+                    <motion.div
+                      animate={{ y: [0, -8, 0] }}
+                      transition={{ duration: 2.5, repeat: Infinity }}
+                      className="mb-6"
+                    >
+                      <div className="w-28 h-28 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-white/30">
+                        <span className="text-5xl font-black text-white">
+                          {winners[2].name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    </motion.div>
+
+                    <div className="w-full bg-gradient-to-b from-orange-400 to-orange-600 rounded-t-3xl p-8 shadow-2xl h-56">
+                      <div className="text-center">
+                        <div className="text-9xl font-black text-white mb-3">3</div>
+                        <h3 className="text-3xl font-bold text-white mb-3 truncate">
+                          {winners[2].name}
+                        </h3>
+                        <div className="bg-white/20 rounded-full px-6 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <Star className="w-6 h-6 text-yellow-200" />
+                            <span className="text-2xl font-black text-white">
+                              {winners[2].score}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
           <motion.div
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1 }}
             className="flex flex-col sm:flex-row gap-6 justify-center items-center"
           >
-            {isAdmin && (
-              <>
-                <Button
-                  onClick={() => setShowStats(!showStats)}
-                  size="lg"
-                  className="bg-blue-500 hover:bg-blue-600 text-white font-black text-2xl px-12 py-8 rounded-full shadow-2xl flex items-center gap-4"
-                  style={{ fontFamily: "'Fredoka', sans-serif" }}
-                >
-                  <BarChart3 className="w-8 h-8" />
-                  {showStats ? 'Hide Stats' : 'Show Stats'}
-                </Button>
-
-                <Button
-                  onClick={handleEndQuiz}
-                  size="lg"
-                  className="bg-red-500 hover:bg-red-600 text-white font-black text-2xl px-12 py-8 rounded-full shadow-2xl flex items-center gap-4"
-                  style={{ fontFamily: "'Fredoka', sans-serif" }}
-                >
-                  <X className="w-8 h-8" />
-                  End Quiz
-                </Button>
-              </>
-            )}
-
             <Button
               onClick={() => navigate('/')}
               size="lg"
@@ -400,53 +347,6 @@ const FinalPodium = () => {
               Back to Home
             </Button>
           </motion.div>
-
-          {/* Quiz Stats Panel */}
-          <AnimatePresence>
-            {showStats && quizStats && (
-              <motion.div
-                initial={{ opacity: 0, y: 50 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 50 }}
-                className="mt-12 bg-white/10 backdrop-blur-md rounded-3xl p-8 shadow-2xl"
-              >
-                <h2 className="text-4xl font-black text-white mb-8 text-center"
-                    style={{ fontFamily: "'Fredoka', sans-serif" }}>
-                  Quiz Statistics
-                </h2>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  <div className="bg-white/10 rounded-2xl p-6 text-center">
-                    <div className="text-5xl font-black text-yellow-400 mb-2">
-                      {quizStats.totalParticipants}
-                    </div>
-                    <div className="text-white/80 text-lg">Total Players</div>
-                  </div>
-
-                  <div className="bg-white/10 rounded-2xl p-6 text-center">
-                    <div className="text-5xl font-black text-green-400 mb-2">
-                      {quizStats.totalQuestions}
-                    </div>
-                    <div className="text-white/80 text-lg">Questions</div>
-                  </div>
-
-                  <div className="bg-white/10 rounded-2xl p-6 text-center">
-                    <div className="text-5xl font-black text-blue-400 mb-2">
-                      {quizStats.averageScore}
-                    </div>
-                    <div className="text-white/80 text-lg">Avg Score</div>
-                  </div>
-
-                  <div className="bg-white/10 rounded-2xl p-6 text-center">
-                    <div className="text-5xl font-black text-purple-400 mb-2">
-                      {quizStats.completionRate}%
-                    </div>
-                    <div className="text-white/80 text-lg">Completion</div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
       </div>
     </div>

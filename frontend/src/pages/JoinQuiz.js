@@ -8,10 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
 
-// Avatar library
 const AVATARS = [
   { id: 1, emoji: '🦊', color: 'from-orange-400 to-red-500', name: 'Fox' },
   { id: 2, emoji: '🐼', color: 'from-gray-300 to-gray-600', name: 'Panda' },
@@ -32,7 +31,7 @@ const JoinQuiz = () => {
   const [searchParams] = useSearchParams();
   const codeFromUrl = searchParams.get('code');
   
-  const [step, setStep] = useState(1); // 1: Enter code, 2: Enter name & avatar
+  const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [quizCode, setQuizCode] = useState(codeFromUrl || '');
   const [selectedAvatar, setSelectedAvatar] = useState(null);
@@ -47,22 +46,7 @@ const JoinQuiz = () => {
       return;
     }
 
-    setLoading(true);
-    
-    try {
-      // TODO: Verify quiz exists
-      // const response = await axios.get(`${API}/quiz/${quizCode}/verify`);
-      
-      // Mock verification
-      setTimeout(() => {
-        setStep(2);
-        setLoading(false);
-        toast.success('Quiz found!');
-      }, 500);
-    } catch (error) {
-      setLoading(false);
-      toast.error('Quiz not found or inactive');
-    }
+    setStep(2);
   };
 
   const handleJoin = async (e) => {
@@ -81,32 +65,23 @@ const JoinQuiz = () => {
     setLoading(true);
     
     try {
-      // TODO: Replace with actual API call
-      // const response = await axios.post(`${API}/join`, {
-      //   name: name.trim(),
-      //   quizCode: quizCode.trim().toUpperCase(),
-      //   avatarId: selectedAvatar.id
-      // });
-      
-      // Mock join
-      const mockParticipant = {
-        id: Date.now().toString(),
+      const response = await axios.post(`${API}/join`, {
         name: name.trim(),
-        quizCode: quizCode.toUpperCase(),
+        quizCode: quizCode.trim().toUpperCase(),
         avatarId: selectedAvatar.id
-      };
+      });
       
-      localStorage.setItem('participantId', mockParticipant.id);
-      localStorage.setItem('participantName', mockParticipant.name);
-      localStorage.setItem('avatarId', selectedAvatar.id);
+      localStorage.setItem('participantId', response.data.id);
+      localStorage.setItem('participantName', response.data.name);
+      localStorage.setItem('avatarId', selectedAvatar.id.toString());
+      localStorage.removeItem('isAdmin');
       
       toast.success('Joined successfully!');
-      
-      // Navigate to lobby
       navigate(`/lobby/${quizCode.toUpperCase()}`);
     } catch (error) {
-      console.error('Error joining quiz:', error);
-      toast.error('Failed to join quiz');
+      console.error('Join error:', error);
+      const msg = error.response?.data?.error || 'Failed to join quiz';
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -119,21 +94,20 @@ const JoinQuiz = () => {
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
       }}
     >
-      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden">
         {[...Array(50)].map((_, i) => (
           <motion.div
             key={i}
             className="absolute"
             initial={{ 
-              x: Math.random() * window.innerWidth,
-              y: Math.random() * window.innerHeight,
+              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1920),
+              y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1080),
               scale: Math.random() * 0.5 + 0.5,
               opacity: Math.random() * 0.3
             }}
             animate={{ 
-              x: Math.random() * window.innerWidth,
-              y: Math.random() * window.innerHeight,
+              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1920),
+              y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1080),
             }}
             transition={{ 
               duration: Math.random() * 20 + 10,
@@ -161,7 +135,6 @@ const JoinQuiz = () => {
 
         <AnimatePresence mode="wait">
           {step === 1 ? (
-            // Step 1: Enter Quiz Code
             <motion.div
               key="step1"
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -226,7 +199,6 @@ const JoinQuiz = () => {
               </Card>
             </motion.div>
           ) : (
-            // Step 2: Enter Name & Select Avatar
             <motion.div
               key="step2"
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -247,7 +219,6 @@ const JoinQuiz = () => {
                 </p>
 
                 <form onSubmit={handleJoin} className="space-y-6">
-                  {/* Name Input */}
                   <div>
                     <label className="block text-sm font-bold text-white/90 mb-2">
                       Your Name
@@ -262,13 +233,11 @@ const JoinQuiz = () => {
                     />
                   </div>
 
-                  {/* Avatar Selection */}
                   <div>
                     <label className="block text-sm font-bold text-white/90 mb-3">
                       Choose Your Avatar
                     </label>
                     
-                    {/* Selected Avatar Preview */}
                     {selectedAvatar && (
                       <motion.div
                         initial={{ scale: 0 }}
@@ -282,7 +251,6 @@ const JoinQuiz = () => {
                       </motion.div>
                     )}
 
-                    {/* Avatar Grid */}
                     <AnimatePresence>
                       {(!selectedAvatar || showAvatars) && (
                         <motion.div
@@ -331,7 +299,6 @@ const JoinQuiz = () => {
                     )}
                   </div>
 
-                  {/* Join Button */}
                   <motion.div
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}

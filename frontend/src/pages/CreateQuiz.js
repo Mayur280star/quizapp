@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
 
 const QUESTION_TYPES = [
@@ -92,7 +92,6 @@ function CreateQuiz() {
     if (!autosave) return;
     
     const timer = setTimeout(() => {
-      // Save to localStorage as draft
       localStorage.setItem('quiz_draft', JSON.stringify({
         title,
         description,
@@ -171,12 +170,10 @@ function CreateQuiz() {
     const question = newQuestions[questionIndex];
     
     if (question.answerMode === 'single') {
-      // Single select: uncheck all others
       question.options.forEach((opt, i) => {
         opt.correct = i === optionIndex;
       });
     } else {
-      // Multi select: toggle
       question.options[optionIndex].correct = !question.options[optionIndex].correct;
     }
     
@@ -184,7 +181,6 @@ function CreateQuiz() {
   }, [questions]);
 
   const handleMediaUpload = useCallback(async (file, questionIndex) => {
-    // Implement media upload logic here
     toast.info('Media upload would happen here');
   }, []);
 
@@ -196,7 +192,6 @@ function CreateQuiz() {
       return;
     }
     
-    // Validate questions
     const invalidQuestions = questions.filter(q => !q.question.trim());
     if (invalidQuestions.length > 0) {
       toast.error('Please fill in all questions');
@@ -224,9 +219,7 @@ function CreateQuiz() {
       const response = await axios.post(`${API}/admin/quiz`, quizData);
       toast.success(`Quiz created! Code: ${response.data.code}`);
       
-      // Clear draft
       localStorage.removeItem('quiz_draft');
-      
       navigate('/admin');
     } catch (error) {
       console.error('Error creating quiz:', error);
@@ -258,7 +251,7 @@ function CreateQuiz() {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Enter kahoot title..."
+                placeholder="Enter quiz title..."
                 className="text-lg font-semibold border-none shadow-none focus-visible:ring-0 w-[300px]"
                 style={{ fontFamily: 'Fredoka, sans-serif' }}
               />
@@ -562,7 +555,6 @@ function CreateQuiz() {
                               className="w-12 flex items-center justify-center border-l border-gray-200 hover:bg-gray-50 transition-colors"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                // Handle media upload for answer
                               }}
                             >
                               <ImageIcon className="w-4 h-4 text-gray-400" />
@@ -674,7 +666,6 @@ function CreateQuiz() {
               <Select
                 value={activeQuestion.answerMode}
                 onValueChange={(value) => {
-                  // Reset correct answers when switching modes
                   const newOptions = activeQuestion.options.map(opt => ({ ...opt, correct: false }));
                   updateQuestion(activeQuestionIndex, { answerMode: value, options: newOptions });
                 }}

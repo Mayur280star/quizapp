@@ -15,18 +15,18 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000'
 const API = `${BACKEND_URL}/api`;
 
 const AVATARS = [
-  { id: 1, emoji: '🦊', color: 'from-orange-400 to-red-500', name: 'Fox' },
-  { id: 2, emoji: '🐼', color: 'from-gray-300 to-gray-600', name: 'Panda' },
-  { id: 3, emoji: '🦁', color: 'from-yellow-400 to-orange-500', name: 'Lion' },
-  { id: 4, emoji: '🐯', color: 'from-orange-500 to-yellow-600', name: 'Tiger' },
-  { id: 5, emoji: '🐨', color: 'from-gray-400 to-gray-600', name: 'Koala' },
-  { id: 6, emoji: '🐸', color: 'from-green-400 to-green-600', name: 'Frog' },
-  { id: 7, emoji: '🦄', color: 'from-pink-400 to-purple-500', name: 'Unicorn' },
-  { id: 8, emoji: '🐙', color: 'from-purple-400 to-blue-500', name: 'Octopus' },
-  { id: 9, emoji: '🦋', color: 'from-blue-400 to-purple-500', name: 'Butterfly' },
-  { id: 10, emoji: '🐝', color: 'from-yellow-400 to-orange-400', name: 'Bee' },
-  { id: 11, emoji: '🦜', color: 'from-green-400 to-blue-500', name: 'Parrot' },
-  { id: 12, emoji: '🐢', color: 'from-green-500 to-teal-600', name: 'Turtle' }
+  { id: 1, emoji: '🦊', color: 'from-orange-400 to-red-500' },
+  { id: 2, emoji: '🐼', color: 'from-gray-300 to-gray-600' },
+  { id: 3, emoji: '🦁', color: 'from-yellow-400 to-orange-500' },
+  { id: 4, emoji: '🐯', color: 'from-orange-500 to-yellow-600' },
+  { id: 5, emoji: '🐨', color: 'from-gray-400 to-gray-600' },
+  { id: 6, emoji: '🐸', color: 'from-green-400 to-green-600' },
+  { id: 7, emoji: '🦄', color: 'from-pink-400 to-purple-500' },
+  { id: 8, emoji: '🐙', color: 'from-purple-400 to-blue-500' },
+  { id: 9, emoji: '🦋', color: 'from-blue-400 to-purple-500' },
+  { id: 10, emoji: '🐝', color: 'from-yellow-400 to-orange-400' },
+  { id: 11, emoji: '🦜', color: 'from-green-400 to-blue-500' },
+  { id: 12, emoji: '🐢', color: 'from-green-500 to-teal-600' }
 ];
 
 const QuizLobby = () => {
@@ -87,11 +87,11 @@ const QuizLobby = () => {
       setQuiz(response.data);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching quiz:', error);
+      console.error('Fetch quiz error:', error);
       toast.error('Failed to load quiz');
-      navigate('/admin');
+      navigate(isAdmin ? '/admin' : '/');
     }
-  }, [code, navigate]);
+  }, [code, navigate, isAdmin]);
 
   const fetchParticipants = useCallback(async () => {
     try {
@@ -100,14 +100,12 @@ const QuizLobby = () => {
         setParticipants(response.data.participants);
       }
     } catch (error) {
-      console.error('Error fetching participants:', error);
+      console.error('Fetch participants error:', error);
     }
   }, [code]);
 
   const connectWebSocket = useCallback(() => {
-    // Close existing connection
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('✓ WebSocket already connected');
       return;
     }
 
@@ -116,16 +114,14 @@ const QuizLobby = () => {
     wsRef.current = socket;
 
     socket.onopen = () => {
-      console.log('✓ WebSocket connected to lobby');
+      console.log('✓ Lobby WebSocket connected');
       setWsConnected(true);
 
-      // Identify this connection
       if (isAdmin) {
         socket.send(JSON.stringify({
           type: 'admin_joined',
           code
         }));
-        console.log('📨 Admin joined message sent');
       } else if (participantId) {
         socket.send(JSON.stringify({
           type: 'participant_joined',
@@ -134,30 +130,23 @@ const QuizLobby = () => {
           avatarId,
           code
         }));
-        console.log('📨 Participant joined message sent');
       }
     };
 
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      console.log('📥 WS message received:', data);
-
+      
       switch (data.type) {
         case 'participant_joined':
-          // Add new participant to list
           setParticipants(prev => {
             const exists = prev.find(p => p.id === data.participant.id);
             if (!exists) {
-              console.log('✅ New participant added:', data.participant.name);
-              
-              // Show celebration
               confetti({
                 particleCount: 30,
                 spread: 40,
                 origin: { x: Math.random(), y: 0.6 }
               });
               toast.success(`${data.participant.name} joined! 🎉`);
-              
               return [...prev, data.participant];
             }
             return prev;
@@ -165,13 +154,10 @@ const QuizLobby = () => {
           break;
 
         case 'all_participants':
-          // Receive full participant list (for admin)
-          console.log('📋 Received all participants:', data.participants.length);
-          setParticipants(data.participants);
+          setParticipants(data.participants || []);
           break;
 
         case 'quiz_starting':
-          // Start countdown
           setCountdown(5);
           confetti({
             particleCount: 100,
@@ -190,42 +176,39 @@ const QuizLobby = () => {
     };
 
     socket.onerror = (error) => {
-      console.error('❌ WebSocket error:', error);
+      console.error('Lobby WebSocket error:', error);
       setWsConnected(false);
     };
 
     socket.onclose = () => {
-      console.log('🔌 WebSocket disconnected');
+      console.log('Lobby WebSocket disconnected');
       setWsConnected(false);
       wsRef.current = null;
-      
-      // Attempt reconnection after delay
       setTimeout(() => {
-        if (!wsRef.current) {
-          console.log('🔄 Attempting to reconnect...');
-          connectWebSocket();
-        }
+        if (!wsRef.current) connectWebSocket();
       }, 3000);
     };
   }, [code, isAdmin, participantId, participantName, avatarId]);
 
   useEffect(() => {
+    if (!participantId && !isAdmin) {
+      toast.error('Please join the quiz first');
+      navigate('/join');
+      return;
+    }
+
     fetchQuizDetails();
     fetchParticipants();
-    
-    // Connect WebSocket
     connectWebSocket();
 
-    // Cleanup
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
     };
-  }, [fetchQuizDetails, fetchParticipants, connectWebSocket]);
+  }, [participantId, isAdmin, navigate, fetchQuizDetails, fetchParticipants, connectWebSocket]);
 
-  // Countdown effect
   useEffect(() => {
     if (countdown === null) return;
 
@@ -233,7 +216,6 @@ const QuizLobby = () => {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
       return () => clearTimeout(timer);
     } else {
-      // Navigate to quiz when countdown ends
       navigate(`/quiz/${code}`);
     }
   }, [countdown, code, navigate]);
@@ -243,11 +225,11 @@ const QuizLobby = () => {
       toast.error('⚠️ No participants yet!');
       return;
     }
-    
+
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'quiz_starting' }));
     } else {
-      toast.error('❌ WebSocket not connected');
+      toast.error('❌ Connection lost');
     }
   };
 
@@ -278,7 +260,6 @@ const QuizLobby = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 via-purple-700 to-indigo-900 relative overflow-hidden">
-      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(50)].map((_, i) => (
           <motion.div
@@ -308,7 +289,6 @@ const QuizLobby = () => {
         ))}
       </div>
 
-      {/* Header Controls */}
       <div className="relative z-10 p-6 flex justify-between items-center">
         <motion.div
           initial={{ x: -50, opacity: 0 }}
@@ -327,9 +307,6 @@ const QuizLobby = () => {
                 transition={{ duration: 2, repeat: Infinity }}
                 className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400' : 'bg-red-400'}`}
               />
-              <span className="text-white/70 text-xs">
-                {wsConnected ? 'Connected' : 'Reconnecting...'}
-              </span>
             </div>
           </div>
         </motion.div>
@@ -359,11 +336,9 @@ const QuizLobby = () => {
         </motion.div>
       </div>
 
-      {/* Main Content */}
       <div className="relative z-10 px-8 pb-8">
         <div className="max-w-7xl mx-auto">
           
-          {/* Quiz Title */}
           <motion.div
             initial={{ y: -50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -393,7 +368,6 @@ const QuizLobby = () => {
               <p className="text-2xl text-white/90 mb-6">{quiz.description}</p>
             )}
 
-            {/* Game PIN Card */}
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -462,7 +436,6 @@ const QuizLobby = () => {
               </div>
             </motion.div>
 
-            {/* Quiz Stats */}
             <motion.div
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -492,7 +465,6 @@ const QuizLobby = () => {
             </motion.div>
           </motion.div>
 
-          {/* Participants Section */}
           <motion.div
             initial={{ y: 50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -517,7 +489,6 @@ const QuizLobby = () => {
               </motion.div>
             </div>
 
-            {/* Participants Grid */}
             {participants.length === 0 ? (
               <div className="text-center py-20">
                 <motion.div
@@ -594,7 +565,6 @@ const QuizLobby = () => {
             )}
           </motion.div>
 
-          {/* Admin Controls */}
           {isAdmin && (
             <motion.div
               initial={{ y: 50, opacity: 0 }}
@@ -620,7 +590,6 @@ const QuizLobby = () => {
             </motion.div>
           )}
 
-          {/* Waiting Message for Users */}
           {!isAdmin && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -640,7 +609,6 @@ const QuizLobby = () => {
         </div>
       </div>
 
-      {/* Countdown Overlay */}
       <AnimatePresence>
         {countdown !== null && countdown > 0 && (
           <motion.div

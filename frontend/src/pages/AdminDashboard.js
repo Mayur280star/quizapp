@@ -1,3 +1,5 @@
+//  /src/pages/AdminDashboard.js
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -15,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
 
 const AdminDashboard = () => {
@@ -35,7 +37,7 @@ const AdminDashboard = () => {
       setQuizzes(response.data);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching quizzes:', error);
+      console.error('Fetch quizzes error:', error);
       toast.error('Failed to load quizzes');
       setLoading(false);
     }
@@ -48,9 +50,14 @@ const AdminDashboard = () => {
       toast.success(`Quiz ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
       fetchQuizzes();
     } catch (error) {
-      console.error('Error updating quiz status:', error);
+      console.error('Update status error:', error);
       toast.error('Failed to update quiz status');
     }
+  };
+
+  const handleStartQuiz = (code) => {
+    localStorage.setItem('isAdmin', 'true');
+    navigate(`/admin/control/${code}`);
   };
 
   const filteredQuizzes = quizzes.filter(quiz => {
@@ -69,7 +76,6 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-[#F8F9FC]">
-      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
@@ -96,7 +102,6 @@ const AdminDashboard = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card className="border-2">
             <CardHeader className="pb-3">
@@ -147,7 +152,6 @@ const AdminDashboard = () => {
           </Card>
         </div>
 
-        {/* Search and Filters */}
         <div className="bg-white rounded-xl border-2 border-gray-200 p-4 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
@@ -171,7 +175,6 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Quiz Grid */}
         {loading ? (
           <div className="text-center py-12">
             <div className="inline-block w-12 h-12 border-4 border-[#FF6B00] border-t-transparent rounded-full animate-spin"></div>
@@ -296,25 +299,13 @@ const AdminDashboard = () => {
                       </Button>
                       
                       <Button
-                        onClick={() => toggleQuizStatus(quiz.code, quiz.status)}
+                        onClick={() => handleStartQuiz(quiz.code)}
                         size="sm"
-                        className={`flex-1 ${
-                          quiz.status === 'active'
-                            ? 'bg-red-500 hover:bg-red-600'
-                            : 'bg-green-500 hover:bg-green-600'
-                        }`}
+                        disabled={quiz.status !== 'active'}
+                        className="flex-1 bg-green-500 hover:bg-green-600 disabled:opacity-50"
                       >
-                        {quiz.status === 'active' ? (
-                          <>
-                            <Ban className="w-4 h-4 mr-1" />
-                            Stop
-                          </>
-                        ) : (
-                          <>
-                            <PlayCircle className="w-4 h-4 mr-1" />
-                            Start
-                          </>
-                        )}
+                        <PlayCircle className="w-4 h-4 mr-1" />
+                        Start
                       </Button>
                     </div>
                   </CardContent>

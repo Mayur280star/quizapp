@@ -5,14 +5,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import {
-  Users, Play, Trophy, Copy, QrCode, Share2, Settings,
-  LogOut, Sparkles, Crown, Star, Zap, Activity,
-  ArrowRight, BarChart3, Eye, Clock, Target
+  Users, Play, Trophy, Copy, QrCode, Share2,
+  LogOut, Sparkles, Crown, Star, Activity
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
@@ -36,24 +34,23 @@ const AdminControl = () => {
   const { code } = useParams();
   const navigate = useNavigate();
   
+  // State
   const [quiz, setQuiz] = useState(null);
   const [participants, setParticipants] = useState([]);
-  const [ws, setWs] = useState(null);
-  const wsRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [countdown, setCountdown] = useState(null);
   const [showQR, setShowQR] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
-  const [quizStarted, setQuizStarted] = useState(false);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answeredCount, setAnsweredCount] = useState(0);
-  const [totalParticipants, setTotalParticipants] = useState(0);
-  const [gamePhase, setGamePhase] = useState('lobby'); // lobby, playing, leaderboard, podium
+  
+  // Refs
+  const wsRef = useRef(null);
+  const mountedRef = useRef(true);
   
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.origin}/join?code=${code}`;
   const joinUrl = `${window.location.origin}/join?code=${code}`;
 
-  const copyCode = () => {
+  // Copy code
+  const copyCode = useCallback(() => {
     navigator.clipboard.writeText(code);
     toast.success('📋 Game PIN copied!');
     confetti({
@@ -61,9 +58,10 @@ const AdminControl = () => {
       spread: 50,
       origin: { y: 0.6 }
     });
-  };
+  }, [code]);
 
-  const shareQuiz = async () => {
+  // Share quiz
+  const shareQuiz = useCallback(async () => {
     if (navigator.share) {
       try {
         await navigator.share({
@@ -81,51 +79,54 @@ const AdminControl = () => {
       navigator.clipboard.writeText(joinUrl);
       toast.success('Join link copied!');
     }
-  };
+  }, [quiz, code, joinUrl]);
 
+  // Fetch quiz details
   const fetchQuizDetails = useCallback(async () => {
     try {
       const response = await axios.get(`${API}/admin/quiz/${code}`);
-      setQuiz(response.data);
-      setLoading(false);
+      if (mountedRef.current) {
+        setQuiz(response.data);
+        setLoading(false);
+      }
     } catch (error) {
-      console.error('Error fetching quiz:', error);
+      console.error('Fetch quiz error:', error);
       toast.error('Failed to load quiz');
       navigate('/admin');
     }
   }, [code, navigate]);
 
+  // Fetch participants
   const fetchParticipants = useCallback(async () => {
     try {
       const response = await axios.get(`${API}/admin/quiz/${code}/participants`);
-      if (response.data.participants) {
+      if (mountedRef.current && response.data.participants) {
         setParticipants(response.data.participants);
-        setTotalParticipants(response.data.participants.length);
       }
     } catch (error) {
-      console.error('Error fetching participants:', error);
+      console.error('Fetch participants error:', error);
     }
   }, [code]);
 
+  // WebSocket connection
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
     const socket = new WebSocket(`${wsUrl}/ws/${code}`);
     wsRef.current = socket;
-    setWs(socket);
 
     socket.onopen = () => {
       console.log('✓ Admin WebSocket connected');
-      setWsConnected(true);
-      
-      socket.send(JSON.stringify({
-        type: 'admin_joined',
-        code
-      }));
+      if (mountedRef.current) {
+        setWsConnected(true);
+        socket.send(JSON.stringify({ type: 'admin_joined', code }));
+      }
     };
 
     socket.onmessage = (event) => {
+      if (!mountedRef.current) return;
+      
       const data = JSON.parse(event.data);
       console.log('Admin WS message:', data);
 
@@ -148,12 +149,10 @@ const AdminControl = () => {
 
         case 'all_participants':
           setParticipants(data.participants || []);
-          setTotalParticipants(data.participants?.length || 0);
           break;
 
-        case 'answer_count':
-          setAnsweredCount(data.answeredCount);
-          setTotalParticipants(data.totalParticipants);
+        case 'ping':
+          socket.send(JSON.stringify({ type: 'pong' }));
           break;
 
         default:
@@ -163,43 +162,27 @@ const AdminControl = () => {
 
     socket.onerror = (error) => {
       console.error('Admin WebSocket error:', error);
-      setWsConnected(false);
+      if (mountedRef.current) {
+        setWsConnected(false);
+      }
     };
 
     socket.onclose = () => {
       console.log('Admin WebSocket disconnected');
-      setWsConnected(false);
-      wsRef.current = null;
-      setTimeout(() => {
-        if (!wsRef.current) connectWebSocket();
-      }, 3000);
-    };
-
-    return () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.close();
+      if (mountedRef.current) {
+        setWsConnected(false);
+        wsRef.current = null;
+        setTimeout(() => {
+          if (mountedRef.current && !wsRef.current) {
+            connectWebSocket();
+          }
+        }, 3000);
       }
     };
   }, [code]);
 
-  useEffect(() => {
-    localStorage.setItem('isAdmin', 'true');
-    fetchQuizDetails();
-    fetchParticipants();
-    connectWebSocket();
-
-    const interval = setInterval(fetchParticipants, 5000);
-
-    return () => {
-      clearInterval(interval);
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [code, fetchQuizDetails, fetchParticipants, connectWebSocket]);
-
-  const handleStartQuiz = () => {
+  // Start quiz
+  const handleStartQuiz = useCallback(() => {
     if (participants.length === 0) {
       toast.error('⚠️ No participants yet!');
       return;
@@ -207,62 +190,19 @@ const AdminControl = () => {
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'quiz_starting' }));
-    }
-
-    setCountdown(5);
-    confetti({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.6 }
-    });
-  };
-
-  // Countdown effect
-  useEffect(() => {
-    if (countdown === null) return;
-
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-      return () => clearTimeout(timer);
+      setCountdown(5);
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
     } else {
-      // Navigate to quiz play when countdown ends
-      setQuizStarted(true);
-      setGamePhase('playing');
-      navigate(`/quiz/${code}`);
+      toast.error('❌ Connection lost');
     }
-  }, [countdown, code, navigate]);
+  }, [participants.length]);
 
-  const handleShowAnswers = () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'show_answer' }));
-    }
-  };
-
-  const handleShowLeaderboard = () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'show_leaderboard' }));
-    }
-    setGamePhase('leaderboard');
-    navigate(`/leaderboard/${code}?question=${currentQuestionIndex}`);
-  };
-
-  const handleNextQuestion = () => {
-    const nextIndex = currentQuestionIndex + 1;
-    if (quiz && nextIndex < quiz.questionsCount) {
-      setCurrentQuestionIndex(nextIndex);
-      setAnsweredCount(0);
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'next_question' }));
-      }
-      navigate(`/quiz/${code}`);
-    } else {
-      // Final results
-      setGamePhase('podium');
-      navigate(`/podium/${code}`);
-    }
-  };
-
-  const handleEndQuiz = async () => {
+  // End quiz
+  const handleEndQuiz = useCallback(async () => {
     try {
       await axios.patch(`${API}/admin/quiz/${code}/status?status=ended`);
       toast.success('Quiz ended');
@@ -271,7 +211,43 @@ const AdminControl = () => {
       console.error('Error ending quiz:', error);
       toast.error('Failed to end quiz');
     }
-  };
+  }, [code, navigate]);
+
+  // Countdown effect
+  useEffect(() => {
+    if (countdown === null || countdown === 0) return;
+
+    const timer = setTimeout(() => {
+      if (countdown === 1) {
+        navigate(`/quiz/${code}`);
+      } else {
+        setCountdown(countdown - 1);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [countdown, code, navigate]);
+
+  // Initialize
+  useEffect(() => {
+    mountedRef.current = true;
+    localStorage.setItem('isAdmin', 'true');
+    
+    fetchQuizDetails();
+    fetchParticipants();
+    connectWebSocket();
+
+    const pollInterval = setInterval(fetchParticipants, 5000);
+
+    return () => {
+      mountedRef.current = false;
+      clearInterval(pollInterval);
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [fetchQuizDetails, fetchParticipants, connectWebSocket]);
 
   if (loading) {
     return (
@@ -359,6 +335,7 @@ const AdminControl = () => {
       {/* Main Content */}
       <div className="relative z-10 px-8 pb-8">
         <div className="max-w-7xl mx-auto">
+          
           {/* Quiz Title */}
           <motion.div
             initial={{ y: -50, opacity: 0 }}
@@ -507,9 +484,9 @@ const AdminControl = () => {
                 animate={{ scale: [1, 1.1, 1] }}
                 transition={{ duration: 2, repeat: Infinity }}
               >
-                <div className="bg-green-500 text-white px-4 py-2 rounded-full font-bold text-lg">
+                <Badge className="bg-green-500 text-white px-4 py-2 text-lg font-bold">
                   {participants.length} Online
-                </div>
+                </Badge>
               </motion.div>
             </div>
 
@@ -591,7 +568,7 @@ const AdminControl = () => {
           </motion.div>
 
           {/* Control Buttons */}
-          {!quizStarted && (
+          {countdown === null && (
             <motion.div
               initial={{ y: 50, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -604,13 +581,13 @@ const AdminControl = () => {
               >
                 <Button
                   onClick={handleStartQuiz}
-                  disabled={participants.length === 0 || countdown !== null}
+                  disabled={participants.length === 0}
                   size="lg"
                   className="bg-white text-purple-600 hover:bg-gray-100 font-black text-3xl px-16 py-8 rounded-full shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ fontFamily: 'Fredoka, sans-serif' }}
                 >
                   <Play className="w-10 h-10 mr-4" />
-                  {countdown !== null ? `Starting in ${countdown}...` : 'Start Quiz'}
+                  Start Quiz
                 </Button>
               </motion.div>
             </motion.div>

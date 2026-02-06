@@ -61,24 +61,23 @@ const QuizPlay = () => {
         params: { participantId: pid }
       });
       
-      console.log('Questions loaded:', response.data);
       setQuestions(response.data.questions || []);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching questions:', error);
-      toast.error('Failed to load quiz questions');
+      console.error('Fetch questions error:', error);
+      toast.error('Failed to load questions');
       navigate('/join');
     }
   }, [code, navigate, isAdmin, participantId]);
 
   const connectWebSocket = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
     const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
     const socket = new WebSocket(`${wsUrl}/ws/${code}`);
     wsRef.current = socket;
 
     socket.onopen = () => {
-      console.log('✓ Quiz WebSocket connected');
-      
       if (isAdmin) {
         socket.send(JSON.stringify({ type: 'admin_joined', code }));
       }
@@ -86,7 +85,6 @@ const QuizPlay = () => {
 
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      console.log('Quiz WebSocket message:', data);
       
       switch (data.type) {
         case 'answer_count':
@@ -112,7 +110,6 @@ const QuizPlay = () => {
         case 'next_question':
           const nextIdx = currentIndex + 1;
           if (nextIdx < questions.length) {
-            // Reset for next question
             setCurrentIndex(nextIdx);
             setQuestionStarted(false);
             setAnswered(false);
@@ -121,7 +118,6 @@ const QuizPlay = () => {
             setShowAnswerReveal(false);
             setAnsweredCount(0);
           } else {
-            // Quiz complete
             navigate(`/podium/${code}`);
           }
           break;
@@ -140,7 +136,7 @@ const QuizPlay = () => {
     };
 
     socket.onclose = () => {
-      console.log('Quiz WebSocket disconnected');
+      wsRef.current = null;
       setTimeout(connectWebSocket, 3000);
     };
 
@@ -210,7 +206,7 @@ const QuizPlay = () => {
         }));
       }
     } catch (error) {
-      console.error('Error auto-submitting answer:', error);
+      console.error('Auto-submit error:', error);
     }
   }, [answered, isAdmin, startTime, participantId, code, currentIndex, selectedOption]);
 
@@ -246,7 +242,7 @@ const QuizPlay = () => {
         }));
       }
     } catch (error) {
-      console.error('Error submitting answer:', error);
+      console.error('Submit answer error:', error);
       toast.error('Failed to submit answer');
     }
   };
@@ -301,7 +297,6 @@ const QuizPlay = () => {
 
   return (
     <div className="min-h-screen bg-[#46178F] relative overflow-hidden">
-      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(30)].map((_, i) => (
           <motion.div
@@ -326,7 +321,6 @@ const QuizPlay = () => {
         ))}
       </div>
 
-      {/* Top Bar */}
       <div className="absolute top-0 left-0 right-0 bg-white/10 backdrop-blur-md py-4 px-8 flex items-center justify-between z-10">
         <div className="flex items-center gap-4">
           <div className="text-white text-2xl font-bold">
@@ -351,10 +345,8 @@ const QuizPlay = () => {
         )}
       </div>
 
-      {/* Main Content */}
       <div className="pt-24 pb-12 px-8">
         <div className="max-w-6xl mx-auto">
-          {/* Question Card */}
           <motion.div
             key={`question-${currentIndex}`}
             initial={{ scale: 0.8, opacity: 0, y: 50 }}
@@ -362,7 +354,6 @@ const QuizPlay = () => {
             transition={{ type: "spring", duration: 0.6 }}
             className="bg-white rounded-3xl p-12 shadow-2xl mb-12 text-center relative overflow-hidden"
           >
-            {/* Timer Circle */}
             {!isAdmin && (
               <motion.div
                 className="inline-block mb-8"
@@ -391,7 +382,6 @@ const QuizPlay = () => {
               {currentQuestion.question}
             </motion.h2>
 
-            {/* Progress indicator */}
             <div className="absolute bottom-0 left-0 right-0 h-2 bg-gray-200">
               <motion.div
                 className="h-full bg-purple-600"
@@ -402,7 +392,6 @@ const QuizPlay = () => {
             </div>
           </motion.div>
 
-          {/* Answer Options Grid */}
           <div className="grid grid-cols-2 gap-8">
             {currentQuestion.options.map((option, index) => {
               const colorScheme = ANSWER_COLORS[index];
@@ -455,19 +444,16 @@ const QuizPlay = () => {
                     ${(answered || isAdmin) ? 'cursor-not-allowed' : 'cursor-pointer'}
                   `}
                 >
-                  {/* Shape Icon */}
                   <div className="absolute top-8 left-8">
                     <ShapeIcon />
                   </div>
 
-                  {/* Answer Text */}
                   <div className="text-left pl-24">
                     <span className="text-4xl font-bold text-white">
                       {option}
                     </span>
                   </div>
 
-                  {/* Result Icons */}
                   <AnimatePresence>
                     {showAnswerReveal && (
                       <motion.div
@@ -490,7 +476,6 @@ const QuizPlay = () => {
                     )}
                   </AnimatePresence>
 
-                  {/* Selection Pulse Effect */}
                   {isSelected && !showAnswerReveal && (
                     <motion.div
                       className="absolute inset-0 bg-white"
@@ -504,7 +489,6 @@ const QuizPlay = () => {
             })}
           </div>
 
-          {/* Submit Button for Users */}
           <AnimatePresence>
             {!isAdmin && !answered && selectedOption !== null && (
               <motion.div
@@ -531,7 +515,6 @@ const QuizPlay = () => {
             )}
           </AnimatePresence>
 
-          {/* Waiting Message for Users */}
           {!isAdmin && answered && !showAnswerReveal && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -548,7 +531,6 @@ const QuizPlay = () => {
             </motion.div>
           )}
 
-          {/* Admin Controls */}
           <AnimatePresence>
             {isAdmin && (
               <motion.div
