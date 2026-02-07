@@ -1,5 +1,3 @@
-//  /src/pages/AdminDashboard.js
-
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -16,6 +14,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
@@ -26,6 +34,9 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [quizToDelete, setQuizToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchQuizzes();
@@ -52,6 +63,32 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error('Update status error:', error);
       toast.error('Failed to update quiz status');
+    }
+  };
+
+  const handleDeleteClick = (quiz) => {
+    setQuizToDelete(quiz);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!quizToDelete) return;
+    
+    setDeleting(true);
+    try {
+      await axios.delete(`${API}/admin/quiz/${quizToDelete.code}`);
+      
+      // Optimistic UI update
+      setQuizzes(prev => prev.filter(q => q.code !== quizToDelete.code));
+      
+      toast.success(`Quiz "${quizToDelete.title}" deleted successfully`);
+      setDeleteDialogOpen(false);
+      setQuizToDelete(null);
+    } catch (error) {
+      console.error('Delete quiz error:', error);
+      toast.error('Failed to delete quiz');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -247,7 +284,10 @@ const AdminDashboard = () => {
                             <Download className="w-4 h-4 mr-2" />
                             Export Results
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600">
+                          <DropdownMenuItem 
+                            className="text-red-600"
+                            onClick={() => handleDeleteClick(quiz)}
+                          >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Delete
                           </DropdownMenuItem>
@@ -315,6 +355,27 @@ const AdminDashboard = () => {
           </div>
         )}
       </main>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Quiz</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "<strong>{quizToDelete?.title}</strong>"? This action cannot be undone and will delete all associated participant data and results.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleting ? 'Deleting...' : 'Delete Quiz'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -1,5 +1,4 @@
-// /src/pages/FinalPodium.js
-
+// frontend/src/pages/FinalPodium.js
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -8,6 +7,7 @@ import { Trophy, Crown, Star, Home } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import DicebearAvatar from '@/components/ui/avatar/DicebearAvatar';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
@@ -82,6 +82,7 @@ const FinalPodium = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 relative overflow-hidden">
+      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(100)].map((_, i) => (
           <motion.div
@@ -91,12 +92,12 @@ const FinalPodium = () => {
               background: ['#FFD700', '#FFA500', '#FF6B6B', '#4ECDC4', '#95E1D3'][Math.floor(Math.random() * 5)]
             }}
             initial={{ 
-              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1920),
+              x: Math.random() * window.innerWidth,
               y: -20,
               scale: Math.random() * 0.5 + 0.5
             }}
             animate={{ 
-              y: (typeof window !== 'undefined' ? window.innerHeight : 1080) + 20,
+              y: window.innerHeight + 20,
               rotate: Math.random() * 360
             }}
             transition={{ 
@@ -111,6 +112,7 @@ const FinalPodium = () => {
 
       <div className="relative z-10 min-h-screen p-8">
         <div className="max-w-7xl mx-auto">
+          {/* Header */}
           <motion.div
             initial={{ y: -100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -150,6 +152,7 @@ const FinalPodium = () => {
             </motion.p>
           </motion.div>
 
+          {/* Winners Podium */}
           {winners.length > 0 && (
             <motion.div
               initial={{ opacity: 0, scale: 0.8 }}
@@ -157,6 +160,7 @@ const FinalPodium = () => {
               className="mb-12"
             >
               <div className="flex items-end justify-center gap-8 mb-12">
+                {/* Second Place */}
                 {winners[1] && (
                   <motion.div
                     initial={{ y: 200, opacity: 0 }}
@@ -169,11 +173,11 @@ const FinalPodium = () => {
                       transition={{ duration: 2, repeat: Infinity }}
                       className="mb-6"
                     >
-                      <div className="w-28 h-28 bg-gradient-to-br from-gray-300 to-gray-500 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-white/30">
-                        <span className="text-5xl font-black text-white">
-                          {winners[1].name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
+                      <DicebearAvatar 
+                        seed={winners[1].avatarSeed || winners[1].name}
+                        size="xl"
+                        className="ring-4 ring-white/30 shadow-2xl"
+                      />
                     </motion.div>
 
                     <div className="w-full bg-gradient-to-b from-gray-300 to-gray-500 rounded-t-3xl p-8 shadow-2xl h-64">
@@ -195,6 +199,7 @@ const FinalPodium = () => {
                   </motion.div>
                 )}
 
+                {/* First Place */}
                 {winners[0] && (
                   <motion.div
                     initial={{ y: 200, opacity: 0 }}
@@ -219,11 +224,11 @@ const FinalPodium = () => {
                         className="absolute -inset-8 bg-gradient-to-r from-yellow-300 via-yellow-400 to-orange-400 rounded-full blur-2xl"
                       />
                       
-                      <div className="relative w-36 h-36 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center shadow-2xl ring-8 ring-yellow-300/50">
-                        <span className="text-7xl font-black text-white">
-                          {winners[0].name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
+                      <DicebearAvatar 
+                        seed={winners[0].avatarSeed || winners[0].name}
+                        size="2xl"
+                        className="relative ring-8 ring-yellow-300/50 shadow-2xl"
+                      />
                       
                       <motion.div
                         animate={{ 
@@ -290,6 +295,7 @@ const FinalPodium = () => {
                   </motion.div>
                 )}
 
+                {/* Third Place */}
                 {winners[2] && (
                   <motion.div
                     initial={{ y: 200, opacity: 0 }}
@@ -302,11 +308,11 @@ const FinalPodium = () => {
                       transition={{ duration: 2.5, repeat: Infinity }}
                       className="mb-6"
                     >
-                      <div className="w-28 h-28 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-white/30">
-                        <span className="text-5xl font-black text-white">
-                          {winners[2].name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
+                      <DicebearAvatar 
+                        seed={winners[2].avatarSeed || winners[2].name}
+                        size="xl"
+                        className="ring-4 ring-white/30 shadow-2xl"
+                      />
                     </motion.div>
 
                     <div className="w-full bg-gradient-to-b from-orange-400 to-orange-600 rounded-t-3xl p-8 shadow-2xl h-56">
@@ -331,6 +337,7 @@ const FinalPodium = () => {
             </motion.div>
           )}
 
+          {/* Back to Home Button */}
           <motion.div
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}

@@ -6,35 +6,20 @@ import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import {
   Users, Play, Trophy, Copy, QrCode, Share2,
-  LogOut, Sparkles, Crown, Star, Activity
+  LogOut, Sparkles, Crown, Star
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import DicebearAvatar from '@/components/ui/avatar/DicebearAvatar';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
-
-const AVATARS = [
-  { id: 1, emoji: '🦊', color: 'from-orange-400 to-red-500' },
-  { id: 2, emoji: '🐼', color: 'from-gray-300 to-gray-600' },
-  { id: 3, emoji: '🦁', color: 'from-yellow-400 to-orange-500' },
-  { id: 4, emoji: '🐯', color: 'from-orange-500 to-yellow-600' },
-  { id: 5, emoji: '🐨', color: 'from-gray-400 to-gray-600' },
-  { id: 6, emoji: '🐸', color: 'from-green-400 to-green-600' },
-  { id: 7, emoji: '🦄', color: 'from-pink-400 to-purple-500' },
-  { id: 8, emoji: '🐙', color: 'from-purple-400 to-blue-500' },
-  { id: 9, emoji: '🦋', color: 'from-blue-400 to-purple-500' },
-  { id: 10, emoji: '🐝', color: 'from-yellow-400 to-orange-400' },
-  { id: 11, emoji: '🦜', color: 'from-green-400 to-blue-500' },
-  { id: 12, emoji: '🐢', color: 'from-green-500 to-teal-600' }
-];
 
 const AdminControl = () => {
   const { code } = useParams();
   const navigate = useNavigate();
   
-  // State
   const [quiz, setQuiz] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,25 +27,18 @@ const AdminControl = () => {
   const [showQR, setShowQR] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   
-  // Refs
   const wsRef = useRef(null);
   const mountedRef = useRef(true);
   
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.origin}/join?code=${code}`;
   const joinUrl = `${window.location.origin}/join?code=${code}`;
 
-  // Copy code
   const copyCode = useCallback(() => {
     navigator.clipboard.writeText(code);
     toast.success('📋 Game PIN copied!');
-    confetti({
-      particleCount: 50,
-      spread: 50,
-      origin: { y: 0.6 }
-    });
+    confetti({ particleCount: 50, spread: 50, origin: { y: 0.6 } });
   }, [code]);
 
-  // Share quiz
   const shareQuiz = useCallback(async () => {
     if (navigator.share) {
       try {
@@ -81,7 +59,6 @@ const AdminControl = () => {
     }
   }, [quiz, code, joinUrl]);
 
-  // Fetch quiz details
   const fetchQuizDetails = useCallback(async () => {
     try {
       const response = await axios.get(`${API}/admin/quiz/${code}`);
@@ -96,7 +73,6 @@ const AdminControl = () => {
     }
   }, [code, navigate]);
 
-  // Fetch participants
   const fetchParticipants = useCallback(async () => {
     try {
       const response = await axios.get(`${API}/admin/quiz/${code}/participants`);
@@ -108,7 +84,6 @@ const AdminControl = () => {
     }
   }, [code]);
 
-  // WebSocket connection
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
@@ -135,11 +110,7 @@ const AdminControl = () => {
           setParticipants(prev => {
             const exists = prev.find(p => p.id === data.participant.id);
             if (!exists) {
-              confetti({
-                particleCount: 30,
-                spread: 40,
-                origin: { x: Math.random(), y: 0.6 }
-              });
+              confetti({ particleCount: 30, spread: 40, origin: { x: Math.random(), y: 0.6 } });
               toast.success(`${data.participant.name} joined! 🎉`);
               return [...prev, data.participant];
             }
@@ -149,6 +120,12 @@ const AdminControl = () => {
 
         case 'all_participants':
           setParticipants(data.participants || []);
+          break;
+
+        case 'avatar_updated':
+          setParticipants(prev => prev.map(p => 
+            p.id === data.participantId ? { ...p, avatarSeed: data.avatarSeed } : p
+          ));
           break;
 
         case 'ping':
@@ -181,7 +158,6 @@ const AdminControl = () => {
     };
   }, [code]);
 
-  // Start quiz
   const handleStartQuiz = useCallback(() => {
     if (participants.length === 0) {
       toast.error('⚠️ No participants yet!');
@@ -191,17 +167,12 @@ const AdminControl = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'quiz_starting' }));
       setCountdown(5);
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     } else {
       toast.error('❌ Connection lost');
     }
   }, [participants.length]);
 
-  // End quiz
   const handleEndQuiz = useCallback(async () => {
     try {
       await axios.patch(`${API}/admin/quiz/${code}/status?status=ended`);
@@ -213,7 +184,6 @@ const AdminControl = () => {
     }
   }, [code, navigate]);
 
-  // Countdown effect
   useEffect(() => {
     if (countdown === null || countdown === 0) return;
 
@@ -228,7 +198,6 @@ const AdminControl = () => {
     return () => clearTimeout(timer);
   }, [countdown, code, navigate]);
 
-  // Initialize
   useEffect(() => {
     mountedRef.current = true;
     localStorage.setItem('isAdmin', 'true');
@@ -285,10 +254,7 @@ const AdminControl = () => {
               repeatType: "reverse"
             }}
           >
-            <div
-              className="w-4 h-4 bg-white rounded-full blur-sm"
-              style={{ opacity: Math.random() * 0.3 }}
-            />
+            <div className="w-4 h-4 bg-white rounded-full blur-sm" style={{ opacity: Math.random() * 0.3 }} />
           </motion.div>
         ))}
       </div>
@@ -343,10 +309,7 @@ const AdminControl = () => {
             className="text-center mb-6"
           >
             <motion.div
-              animate={{
-                rotate: [0, 5, -5, 0],
-                scale: [1, 1.05, 1]
-              }}
+              animate={{ rotate: [0, 5, -5, 0], scale: [1, 1.05, 1] }}
               transition={{ duration: 2, repeat: Infinity }}
               className="inline-block mb-4"
             >
@@ -375,9 +338,7 @@ const AdminControl = () => {
             >
               <div className="flex items-center justify-between gap-6">
                 <div className="flex-1 text-left">
-                  <p className="text-sm font-bold text-purple-600 uppercase tracking-wider mb-2">
-                    Game PIN
-                  </p>
+                  <p className="text-sm font-bold text-purple-600 uppercase tracking-wider mb-2">Game PIN</p>
                   <div className="flex items-center gap-4">
                     <motion.div
                       whileHover={{ scale: 1.05 }}
@@ -386,31 +347,16 @@ const AdminControl = () => {
                     >
                       {code}
                     </motion.div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={copyCode}
-                      className="h-12 w-12"
-                    >
+                    <Button variant="ghost" size="icon" onClick={copyCode} className="h-12 w-12">
                       <Copy className="w-6 h-6" />
                     </Button>
                   </div>
                   <div className="flex gap-2 mt-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={shareQuiz}
-                    >
-                      <Share2 className="w-4 h-4 mr-2" />
-                      Share
+                    <Button variant="outline" size="sm" onClick={shareQuiz}>
+                      <Share2 className="w-4 h-4 mr-2" />Share
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowQR(!showQR)}
-                    >
-                      <QrCode className="w-4 h-4 mr-2" />
-                      QR Code
+                    <Button variant="outline" size="sm" onClick={() => setShowQR(!showQR)}>
+                      <QrCode className="w-4 h-4 mr-2" />QR Code
                     </Button>
                   </div>
                 </div>
@@ -423,11 +369,7 @@ const AdminControl = () => {
                       exit={{ scale: 0, opacity: 0 }}
                       className="bg-white p-4 rounded-2xl shadow-xl"
                     >
-                      <img
-                        src={qrCodeUrl}
-                        alt="QR Code"
-                        className="w-40 h-40 rounded-lg"
-                      />
+                      <img src={qrCodeUrl} alt="QR Code" className="w-40 h-40 rounded-lg" />
                       <p className="text-xs text-center text-gray-600 mt-2">Scan to join</p>
                     </motion.div>
                   )}
@@ -480,10 +422,7 @@ const AdminControl = () => {
                 </h2>
               </div>
 
-              <motion.div
-                animate={{ scale: [1, 1.1, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              >
+              <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }}>
                 <Badge className="bg-green-500 text-white px-4 py-2 text-lg font-bold">
                   {participants.length} Online
                 </Badge>
@@ -494,74 +433,58 @@ const AdminControl = () => {
             {participants.length === 0 ? (
               <div className="text-center py-20">
                 <motion.div
-                  animate={{
-                    y: [0, -20, 0],
-                    rotate: [0, 5, -5, 0]
-                  }}
+                  animate={{ y: [0, -20, 0], rotate: [0, 5, -5, 0] }}
                   transition={{ duration: 3, repeat: Infinity }}
                 >
                   <Users className="w-32 h-32 text-white/30 mx-auto mb-6" />
                 </motion.div>
-                <h3 className="text-3xl font-bold text-white/60 mb-2">
-                  Waiting for players...
-                </h3>
-                <p className="text-xl text-white/40">
-                  Share the game PIN to get started!
-                </p>
+                <h3 className="text-3xl font-bold text-white/60 mb-2">Waiting for players...</h3>
+                <p className="text-xl text-white/40">Share the game PIN to get started!</p>
               </div>
             ) : (
               <div className="grid grid-cols-6 gap-4 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
                 <AnimatePresence>
-                  {participants.map((participant, index) => {
-                    const avatar = AVATARS.find(a => a.id === participant.avatarId) || AVATARS[0];
-
-                    return (
-                      <motion.div
-                        key={participant.id}
-                        initial={{ scale: 0, rotate: -180, opacity: 0 }}
-                        animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                        exit={{ scale: 0, rotate: 180, opacity: 0 }}
-                        transition={{
-                          type: "spring",
-                          delay: index * 0.05,
-                          duration: 0.6
-                        }}
-                        className="relative"
-                      >
-                        <Card className="bg-white p-4 shadow-lg hover:shadow-xl transition-shadow">
-                          {index === 0 && (
-                            <motion.div
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              className="absolute -top-2 -right-2 z-10"
-                            >
-                              <div className="bg-yellow-400 text-purple-900 rounded-full p-2 shadow-lg">
-                                <Crown className="w-4 h-4" />
-                              </div>
-                            </motion.div>
-                          )}
-
+                  {participants.map((participant, index) => (
+                    <motion.div
+                      key={participant.id}
+                      initial={{ scale: 0, rotate: -180, opacity: 0 }}
+                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                      exit={{ scale: 0, rotate: 180, opacity: 0 }}
+                      transition={{ type: "spring", delay: index * 0.05, duration: 0.6 }}
+                      className="relative"
+                    >
+                      <Card className="bg-white p-4 shadow-lg hover:shadow-xl transition-shadow">
+                        {index === 0 && (
                           <motion.div
-                            whileHover={{ scale: 1.1, rotate: 5 }}
-                            className="mb-3"
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute -top-2 -right-2 z-10"
                           >
-                            <div className={`w-16 h-16 mx-auto bg-gradient-to-br ${avatar.color} rounded-full flex items-center justify-center shadow-lg text-3xl`}>
-                              {avatar.emoji}
+                            <div className="bg-yellow-400 text-purple-900 rounded-full p-2 shadow-lg">
+                              <Crown className="w-4 h-4" />
                             </div>
                           </motion.div>
+                        )}
 
-                          <p className="font-bold text-gray-900 text-center truncate text-sm">
-                            {participant.name}
-                          </p>
+                        <motion.div whileHover={{ scale: 1.1, rotate: 5 }} className="mb-3">
+                          <DicebearAvatar 
+                            seed={participant.avatarSeed}
+                            size="lg"
+                            className="mx-auto shadow-lg"
+                          />
+                        </motion.div>
 
-                          <div className="flex items-center justify-center gap-1 mt-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                            <span className="text-xs text-gray-600">Ready</span>
-                          </div>
-                        </Card>
-                      </motion.div>
-                    );
-                  })}
+                        <p className="font-bold text-gray-900 text-center truncate text-sm">
+                          {participant.name}
+                        </p>
+
+                        <div className="flex items-center justify-center gap-1 mt-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                          <span className="text-xs text-gray-600">Ready</span>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  ))}
                 </AnimatePresence>
               </div>
             )}
@@ -575,10 +498,7 @@ const AdminControl = () => {
               transition={{ delay: 0.6 }}
               className="mt-8 text-center"
             >
-              <motion.div
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button
                   onClick={handleStartQuiz}
                   disabled={participants.length === 0}
@@ -613,10 +533,7 @@ const AdminControl = () => {
               className="text-center"
             >
               <motion.div
-                animate={{
-                  scale: [1, 1.2, 1],
-                  rotate: [0, 360]
-                }}
+                animate={{ scale: [1, 1.2, 1], rotate: [0, 360] }}
                 transition={{ duration: 1 }}
                 className="text-[250px] font-black text-white mb-8 leading-none"
                 style={{ fontFamily: 'Fredoka, sans-serif' }}

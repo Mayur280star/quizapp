@@ -4,7 +4,7 @@ import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
-import { Check, X, BarChart3, Users, Zap, Trophy } from 'lucide-react';
+import { Check, X, BarChart3, Users, Zap, Trophy, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
@@ -19,16 +19,16 @@ const ANSWER_COLORS = [
 
 const SHAPE_ICONS = {
   triangle: () => (
-    <div className="w-0 h-0 border-l-[24px] border-l-transparent border-r-[24px] border-r-transparent border-b-[40px] border-b-white"></div>
+    <div className="w-0 h-0 border-l-[20px] md:border-l-[24px] border-l-transparent border-r-[20px] md:border-r-[24px] border-r-transparent border-b-[34px] md:border-b-[40px] border-b-white"></div>
   ),
   diamond: () => (
-    <div className="w-12 h-12 bg-white transform rotate-45"></div>
+    <div className="w-10 h-10 md:w-12 md:h-12 bg-white transform rotate-45"></div>
   ),
   circle: () => (
-    <div className="w-16 h-16 bg-white rounded-full"></div>
+    <div className="w-12 h-12 md:w-16 md:h-16 bg-white rounded-full"></div>
   ),
   square: () => (
-    <div className="w-16 h-16 bg-white"></div>
+    <div className="w-12 h-12 md:w-16 md:h-16 bg-white"></div>
   )
 };
 
@@ -36,20 +36,29 @@ const QuizPlay = () => {
   const { code } = useParams();
   const navigate = useNavigate();
   
+  // Question data
   const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(0);
   const [loading, setLoading] = useState(true);
+  
+  // Answer state
+  const [selectedOption, setSelectedOption] = useState(null);
   const [answered, setAnswered] = useState(false);
   const [result, setResult] = useState(null);
-  const [startTime, setStartTime] = useState(null);
-  const [score, setScore] = useState(0);
   const [showAnswerReveal, setShowAnswerReveal] = useState(false);
+  
+  // Timer state
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [startTime, setStartTime] = useState(null);
+  const [questionStarted, setQuestionStarted] = useState(false);
+  
+  // Score tracking
+  const [score, setScore] = useState(0);
+  
+  // WebSocket and admin state
   const wsRef = useRef(null);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [totalParticipants, setTotalParticipants] = useState(0);
-  const [questionStarted, setQuestionStarted] = useState(false);
   
   const isAdmin = localStorage.getItem('isAdmin') === 'true';
   const participantId = localStorage.getItem('participantId');
@@ -78,6 +87,7 @@ const QuizPlay = () => {
     wsRef.current = socket;
 
     socket.onopen = () => {
+      console.log('✓ QuizPlay WebSocket connected');
       if (isAdmin) {
         socket.send(JSON.stringify({ type: 'admin_joined', code }));
       }
@@ -85,6 +95,7 @@ const QuizPlay = () => {
 
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      console.log('QuizPlay received:', data);
       
       switch (data.type) {
         case 'answer_count':
@@ -104,22 +115,33 @@ const QuizPlay = () => {
           break;
           
         case 'show_leaderboard':
-          navigate(`/leaderboard/${code}?question=${currentIndex}`);
+          const questionParam = data.current_question !== undefined ? data.current_question : currentIndex;
+          navigate(`/leaderboard/${code}?question=${questionParam}`);
           break;
           
         case 'next_question':
-          const nextIdx = currentIndex + 1;
-          if (nextIdx < questions.length) {
+          // CRITICAL FIX: Backend sends us the new question index
+          const nextIdx = data.current_question;
+          console.log('📝 Moving to question:', nextIdx);
+          
+          if (nextIdx !== undefined && nextIdx < questions.length) {
+            // Update question index FIRST
             setCurrentIndex(nextIdx);
+            
+            // Reset all state for new question
             setQuestionStarted(false);
             setAnswered(false);
             setResult(null);
             setSelectedOption(null);
             setShowAnswerReveal(false);
             setAnsweredCount(0);
-          } else {
-            navigate(`/podium/${code}`);
+            setStartTime(null);
+            setTimeLeft(0);
           }
+          break;
+
+        case 'show_podium':
+          navigate(`/podium/${code}`);
           break;
 
         case 'ping':
@@ -132,10 +154,11 @@ const QuizPlay = () => {
     };
 
     socket.onerror = (error) => {
-      console.error('Quiz WebSocket error:', error);
+      console.error('QuizPlay WebSocket error:', error);
     };
 
     socket.onclose = () => {
+      console.log('QuizPlay WebSocket closed');
       wsRef.current = null;
       setTimeout(connectWebSocket, 3000);
     };
@@ -164,6 +187,7 @@ const QuizPlay = () => {
     }
   }, [questions.length, connectWebSocket]);
 
+  // Start timer when question loads
   useEffect(() => {
     if (questions.length > 0 && currentIndex < questions.length && !questionStarted) {
       setQuestionStarted(true);
@@ -172,6 +196,7 @@ const QuizPlay = () => {
     }
   }, [currentIndex, questions, questionStarted]);
 
+  // Timer countdown
   useEffect(() => {
     if (timeLeft > 0 && !answered && questionStarted && !isAdmin) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
@@ -207,6 +232,9 @@ const QuizPlay = () => {
       }
     } catch (error) {
       console.error('Auto-submit error:', error);
+      const errorMsg = error.response?.data?.detail || 'Failed to auto-submit';
+      toast.error(errorMsg);
+      setAnswered(false);
     }
   }, [answered, isAdmin, startTime, participantId, code, currentIndex, selectedOption]);
 
@@ -243,7 +271,9 @@ const QuizPlay = () => {
       }
     } catch (error) {
       console.error('Submit answer error:', error);
-      toast.error('Failed to submit answer');
+      const errorMsg = error.response?.data?.detail || 'Failed to submit answer';
+      toast.error(errorMsg);
+      setAnswered(false);
     }
   };
 
@@ -265,7 +295,7 @@ const QuizPlay = () => {
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="w-20 h-20 border-8 border-white border-t-transparent rounded-full"
+          className="w-16 h-16 md:w-20 md:h-20 border-6 md:border-8 border-white border-t-transparent rounded-full"
         />
       </div>
     );
@@ -273,14 +303,14 @@ const QuizPlay = () => {
 
   if (questions.length === 0) {
     return (
-      <div className="min-h-screen bg-[#46178F] flex items-center justify-center">
+      <div className="min-h-screen bg-[#46178F] flex items-center justify-center p-4">
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
-          className="bg-white rounded-3xl p-8 text-center shadow-2xl max-w-md"
+          className="bg-white rounded-3xl p-6 md:p-8 text-center shadow-2xl max-w-md"
         >
-          <div className="text-6xl mb-4">📝</div>
-          <p className="text-2xl font-bold text-gray-800 mb-2">No questions available</p>
+          <div className="text-5xl md:text-6xl mb-4">📝</div>
+          <p className="text-xl md:text-2xl font-bold text-gray-800 mb-2">No questions available</p>
           <p className="text-gray-600">Please check the quiz configuration</p>
           <Button
             onClick={() => navigate('/admin')}
@@ -294,9 +324,11 @@ const QuizPlay = () => {
   }
 
   const currentQuestion = questions[currentIndex];
+  const isLastQuestion = currentIndex === questions.length - 1;
 
   return (
     <div className="min-h-screen bg-[#46178F] relative overflow-hidden">
+      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(30)].map((_, i) => (
           <motion.div
@@ -321,48 +353,51 @@ const QuizPlay = () => {
         ))}
       </div>
 
-      <div className="absolute top-0 left-0 right-0 bg-white/10 backdrop-blur-md py-4 px-8 flex items-center justify-between z-10">
-        <div className="flex items-center gap-4">
-          <div className="text-white text-2xl font-bold">
-            Question {currentIndex + 1} of {questions.length}
+      {/* Header - FIXED QUESTION COUNTER */}
+      <div className="absolute top-0 left-0 right-0 bg-white/10 backdrop-blur-md py-3 md:py-4 px-4 md:px-8 flex items-center justify-between z-10">
+        <div className="flex items-center gap-2 md:gap-4">
+          {/* CRITICAL FIX: Display currentIndex + 1 which updates properly */}
+          <div className="text-white text-lg md:text-2xl font-bold">
+            <span className="text-yellow-300">Question</span> {currentIndex + 1} of {questions.length}
           </div>
           
           {!isAdmin && (
-            <div className="flex items-center gap-2 bg-white/20 rounded-full px-4 py-2">
-              <Trophy className="w-5 h-5 text-yellow-300" />
-              <span className="text-white text-xl font-semibold">{score}</span>
+            <div className="flex items-center gap-2 bg-white/20 rounded-full px-3 md:px-4 py-1 md:py-2">
+              <Trophy className="w-4 h-4 md:w-5 md:h-5 text-yellow-300" />
+              <span className="text-white text-base md:text-xl font-semibold">{score}</span>
             </div>
           )}
         </div>
 
         {isAdmin && (
-          <div className="flex items-center gap-4">
-            <div className="text-white text-lg font-semibold flex items-center gap-2 bg-white/20 rounded-full px-4 py-2">
-              <Users className="w-5 h-5" />
+          <div className="flex items-center gap-2 md:gap-4">
+            <div className="text-white text-sm md:text-lg font-semibold flex items-center gap-2 bg-white/20 rounded-full px-3 md:px-4 py-1 md:py-2">
+              <Users className="w-4 h-4 md:w-5 md:h-5" />
               <span>{answeredCount} / {totalParticipants}</span>
             </div>
           </div>
         )}
       </div>
 
-      <div className="pt-24 pb-12 px-8">
+      <div className="pt-16 md:pt-24 pb-8 md:pb-12 px-4 md:px-8">
         <div className="max-w-6xl mx-auto">
+          {/* Question Card */}
           <motion.div
             key={`question-${currentIndex}`}
             initial={{ scale: 0.8, opacity: 0, y: 50 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             transition={{ type: "spring", duration: 0.6 }}
-            className="bg-white rounded-3xl p-12 shadow-2xl mb-12 text-center relative overflow-hidden"
+            className="bg-white rounded-2xl md:rounded-3xl p-6 md:p-12 shadow-2xl mb-8 md:mb-12 text-center relative overflow-hidden"
           >
             {!isAdmin && (
               <motion.div
-                className="inline-block mb-8"
+                className="inline-block mb-6 md:mb-8"
                 animate={timeLeft <= 5 ? { 
                   scale: [1, 1.2, 1],
                 } : {}}
                 transition={{ duration: 0.5, repeat: timeLeft <= 5 ? Infinity : 0 }}
               >
-                <div className={`w-32 h-32 rounded-full flex items-center justify-center text-5xl font-black transition-all duration-300 ${
+                <div className={`w-24 h-24 md:w-32 md:h-32 rounded-full flex items-center justify-center text-4xl md:text-5xl font-black transition-all duration-300 ${
                   timeLeft <= 5 ? 'bg-red-500 text-white animate-pulse' : 
                   timeLeft <= 10 ? 'bg-orange-500 text-white' :
                   'bg-gray-200 text-gray-700'
@@ -376,7 +411,7 @@ const QuizPlay = () => {
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="text-5xl font-black text-gray-900 leading-tight px-4"
+              className="text-3xl md:text-5xl font-black text-gray-900 leading-tight px-2 md:px-4"
               style={{ fontFamily: 'Fredoka, sans-serif' }}
             >
               {currentQuestion.question}
@@ -392,7 +427,8 @@ const QuizPlay = () => {
             </div>
           </motion.div>
 
-          <div className="grid grid-cols-2 gap-8">
+          {/* Answer Options */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
             {currentQuestion.options.map((option, index) => {
               const colorScheme = ANSWER_COLORS[index];
               const isSelected = selectedOption === index;
@@ -406,10 +442,10 @@ const QuizPlay = () => {
               if (showAnswerReveal) {
                 if (isCorrect) {
                   buttonStyle = { backgroundColor: '#10B981' };
-                  borderStyle = 'ring-8 ring-green-400';
+                  borderStyle = 'ring-4 md:ring-8 ring-green-400';
                 } else if (isWrong) {
                   buttonStyle = { backgroundColor: '#EF4444' };
-                  borderStyle = 'ring-8 ring-red-400';
+                  borderStyle = 'ring-4 md:ring-8 ring-red-400';
                 } else {
                   buttonStyle = { backgroundColor: colorScheme.bg, opacity: 0.6 };
                 }
@@ -418,7 +454,7 @@ const QuizPlay = () => {
                   backgroundColor: isSelected ? colorScheme.hover : colorScheme.bg 
                 };
                 if (isSelected) {
-                  borderStyle = 'ring-8 ring-white scale-105';
+                  borderStyle = 'ring-4 md:ring-8 ring-white scale-105';
                 }
               }
 
@@ -438,18 +474,18 @@ const QuizPlay = () => {
                   disabled={answered || isAdmin}
                   style={buttonStyle}
                   className={`
-                    relative overflow-hidden rounded-3xl p-12
+                    relative overflow-hidden rounded-2xl md:rounded-3xl p-6 md:p-12
                     transition-all duration-300 shadow-2xl
                     ${borderStyle}
                     ${(answered || isAdmin) ? 'cursor-not-allowed' : 'cursor-pointer'}
                   `}
                 >
-                  <div className="absolute top-8 left-8">
+                  <div className="absolute top-4 md:top-8 left-4 md:left-8">
                     <ShapeIcon />
                   </div>
 
-                  <div className="text-left pl-24">
-                    <span className="text-4xl font-bold text-white">
+                  <div className="text-left pl-16 md:pl-24">
+                    <span className="text-2xl md:text-4xl font-bold text-white">
                       {option}
                     </span>
                   </div>
@@ -460,16 +496,16 @@ const QuizPlay = () => {
                         initial={{ scale: 0, rotate: -180 }}
                         animate={{ scale: 1, rotate: 0 }}
                         transition={{ type: "spring", delay: 0.2 }}
-                        className="absolute top-8 right-8"
+                        className="absolute top-4 md:top-8 right-4 md:right-8"
                       >
                         {isCorrect && (
-                          <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center">
-                            <Check className="w-10 h-10 text-green-500" strokeWidth={4} />
+                          <div className="w-12 h-12 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center">
+                            <Check className="w-8 h-8 md:w-10 md:h-10 text-green-500" strokeWidth={4} />
                           </div>
                         )}
                         {isWrong && (
-                          <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center">
-                            <X className="w-10 h-10 text-red-500" strokeWidth={4} />
+                          <div className="w-12 h-12 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center">
+                            <X className="w-8 h-8 md:w-10 md:h-10 text-red-500" strokeWidth={4} />
                           </div>
                         )}
                       </motion.div>
@@ -489,13 +525,14 @@ const QuizPlay = () => {
             })}
           </div>
 
+          {/* Player Submit Button */}
           <AnimatePresence>
             {!isAdmin && !answered && selectedOption !== null && (
               <motion.div
                 initial={{ y: 50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 50, opacity: 0 }}
-                className="flex justify-center mt-12"
+                className="flex justify-center mt-8 md:mt-12"
               >
                 <motion.div
                   whileHover={{ scale: 1.05 }}
@@ -504,10 +541,10 @@ const QuizPlay = () => {
                   <Button
                     onClick={handleSubmit}
                     size="lg"
-                    className="bg-white text-purple-600 hover:bg-gray-100 font-black text-3xl px-16 py-8 rounded-full shadow-2xl"
+                    className="bg-white text-purple-600 hover:bg-gray-100 font-black text-xl md:text-3xl px-8 md:px-16 py-6 md:py-8 rounded-full shadow-2xl"
                     style={{ fontFamily: 'Fredoka, sans-serif' }}
                   >
-                    <Zap className="w-8 h-8 mr-3" />
+                    <Zap className="w-6 h-6 md:w-8 md:h-8 mr-2 md:mr-3" />
                     Submit Answer
                   </Button>
                 </motion.div>
@@ -515,38 +552,41 @@ const QuizPlay = () => {
             )}
           </AnimatePresence>
 
+          {/* Player Waiting Message */}
           {!isAdmin && answered && !showAnswerReveal && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-center mt-12"
+              className="text-center mt-8 md:mt-12"
             >
               <motion.p
                 animate={{ scale: [1, 1.05, 1] }}
                 transition={{ duration: 2, repeat: Infinity }}
-                className="text-white text-2xl font-semibold"
+                className="text-white text-lg md:text-2xl font-semibold"
               >
                 ⏳ Waiting for others to answer...
               </motion.p>
             </motion.div>
           )}
 
+          {/* Admin Controls */}
           <AnimatePresence>
             {isAdmin && (
               <motion.div
                 initial={{ y: 50, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="flex justify-center gap-6 mt-12"
+                className="flex flex-col md:flex-row justify-center gap-4 md:gap-6 mt-8 md:mt-12"
               >
                 {!showAnswerReveal && (
                   <motion.div
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
+                    className="w-full md:w-auto"
                   >
                     <Button
                       onClick={handleShowAnswer}
                       size="lg"
-                      className="bg-orange-500 hover:bg-orange-600 text-white font-black text-2xl px-12 py-8 rounded-full shadow-2xl"
+                      className="w-full md:w-auto bg-orange-500 hover:bg-orange-600 text-white font-black text-xl md:text-2xl px-8 md:px-12 py-6 md:py-8 rounded-full shadow-2xl"
                       style={{ fontFamily: 'Fredoka, sans-serif' }}
                     >
                       Show Answers
@@ -560,14 +600,15 @@ const QuizPlay = () => {
                     animate={{ scale: 1 }}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
+                    className="w-full md:w-auto"
                   >
                     <Button
                       onClick={handleShowLeaderboard}
                       size="lg"
-                      className="bg-blue-500 hover:bg-blue-600 text-white font-black text-2xl px-12 py-8 rounded-full shadow-2xl flex items-center gap-4"
+                      className="w-full md:w-auto bg-blue-500 hover:bg-blue-600 text-white font-black text-xl md:text-2xl px-8 md:px-12 py-6 md:py-8 rounded-full shadow-2xl flex items-center justify-center gap-3 md:gap-4"
                       style={{ fontFamily: 'Fredoka, sans-serif' }}
                     >
-                      <BarChart3 className="w-8 h-8" />
+                      <BarChart3 className="w-6 h-6 md:w-8 md:h-8" />
                       Show Leaderboard
                     </Button>
                   </motion.div>

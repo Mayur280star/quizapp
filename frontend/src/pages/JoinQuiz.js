@@ -1,30 +1,22 @@
-import { useState } from 'react';
+// frontend/src/pages/JoinQuiz.js
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { LogIn, ArrowLeft, Sparkles } from 'lucide-react';
+import { LogIn, ArrowLeft, Sparkles, Shuffle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import DicebearAvatar from '@/components/ui/avatar/DicebearAvatar';
+import { 
+  generateRandomSeed, 
+  saveAvatarSeed, 
+  getStoredAvatarSeed 
+} from '@/utils/avatar';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
-
-const AVATARS = [
-  { id: 1, emoji: '🦊', color: 'from-orange-400 to-red-500', name: 'Fox' },
-  { id: 2, emoji: '🐼', color: 'from-gray-300 to-gray-600', name: 'Panda' },
-  { id: 3, emoji: '🦁', color: 'from-yellow-400 to-orange-500', name: 'Lion' },
-  { id: 4, emoji: '🐯', color: 'from-orange-500 to-yellow-600', name: 'Tiger' },
-  { id: 5, emoji: '🐨', color: 'from-gray-400 to-gray-600', name: 'Koala' },
-  { id: 6, emoji: '🐸', color: 'from-green-400 to-green-600', name: 'Frog' },
-  { id: 7, emoji: '🦄', color: 'from-pink-400 to-purple-500', name: 'Unicorn' },
-  { id: 8, emoji: '🐙', color: 'from-purple-400 to-blue-500', name: 'Octopus' },
-  { id: 9, emoji: '🦋', color: 'from-blue-400 to-purple-500', name: 'Butterfly' },
-  { id: 10, emoji: '🐝', color: 'from-yellow-400 to-orange-400', name: 'Bee' },
-  { id: 11, emoji: '🦜', color: 'from-green-400 to-blue-500', name: 'Parrot' },
-  { id: 12, emoji: '🐢', color: 'from-green-500 to-teal-600', name: 'Turtle' }
-];
 
 const JoinQuiz = () => {
   const navigate = useNavigate();
@@ -34,9 +26,20 @@ const JoinQuiz = () => {
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [quizCode, setQuizCode] = useState(codeFromUrl || '');
-  const [selectedAvatar, setSelectedAvatar] = useState(null);
+  const [avatarSeed, setAvatarSeed] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showAvatars, setShowAvatars] = useState(false);
+
+  // Initialize avatar seed on mount
+  useEffect(() => {
+    const stored = getStoredAvatarSeed();
+    if (stored) {
+      setAvatarSeed(stored);
+    } else {
+      const newSeed = generateRandomSeed();
+      setAvatarSeed(newSeed);
+      saveAvatarSeed(newSeed);
+    }
+  }, []);
 
   const handleCodeSubmit = async (e) => {
     e.preventDefault();
@@ -49,6 +52,13 @@ const JoinQuiz = () => {
     setStep(2);
   };
 
+  const handleRandomizeAvatar = () => {
+    const newSeed = generateRandomSeed();
+    setAvatarSeed(newSeed);
+    saveAvatarSeed(newSeed);
+    toast.success('🎲 Avatar randomized!');
+  };
+
   const handleJoin = async (e) => {
     e.preventDefault();
     
@@ -57,8 +67,8 @@ const JoinQuiz = () => {
       return;
     }
     
-    if (!selectedAvatar) {
-      toast.error('Please select an avatar');
+    if (!avatarSeed) {
+      toast.error('Avatar not loaded');
       return;
     }
 
@@ -68,12 +78,12 @@ const JoinQuiz = () => {
       const response = await axios.post(`${API}/join`, {
         name: name.trim(),
         quizCode: quizCode.trim().toUpperCase(),
-        avatarId: selectedAvatar.id
+        avatarSeed: avatarSeed
       });
       
       localStorage.setItem('participantId', response.data.id);
       localStorage.setItem('participantName', response.data.name);
-      localStorage.setItem('avatarId', selectedAvatar.id.toString());
+      localStorage.setItem('avatarSeed', response.data.avatarSeed);
       localStorage.removeItem('isAdmin');
       
       toast.success('Joined successfully!');
@@ -82,6 +92,11 @@ const JoinQuiz = () => {
       console.error('Join error:', error);
       const msg = error.response?.data?.error || 'Failed to join quiz';
       toast.error(msg);
+      
+      // If avatar conflict, generate new one
+      if (msg.includes('avatar') || msg.includes('unique')) {
+        handleRandomizeAvatar();
+      }
     } finally {
       setLoading(false);
     }
@@ -94,20 +109,21 @@ const JoinQuiz = () => {
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
       }}
     >
+      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden">
         {[...Array(50)].map((_, i) => (
           <motion.div
             key={i}
             className="absolute"
             initial={{ 
-              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1920),
-              y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1080),
+              x: Math.random() * window.innerWidth,
+              y: Math.random() * window.innerHeight,
               scale: Math.random() * 0.5 + 0.5,
               opacity: Math.random() * 0.3
             }}
             animate={{ 
-              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1920),
-              y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1080),
+              x: Math.random() * window.innerWidth,
+              y: Math.random() * window.innerHeight,
             }}
             transition={{ 
               duration: Math.random() * 20 + 10,
@@ -235,68 +251,35 @@ const JoinQuiz = () => {
 
                   <div>
                     <label className="block text-sm font-bold text-white/90 mb-3">
-                      Choose Your Avatar
+                      Your Avatar
                     </label>
                     
-                    {selectedAvatar && (
+                    <div className="flex flex-col items-center gap-4">
                       <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="mb-4 flex justify-center"
+                        whileHover={{ scale: 1.05 }}
+                        className="relative"
                       >
-                        <div className={`w-24 h-24 bg-gradient-to-br ${selectedAvatar.color} rounded-full flex items-center justify-center shadow-xl text-5xl cursor-pointer`}
-                             onClick={() => setShowAvatars(!showAvatars)}>
-                          {selectedAvatar.emoji}
-                        </div>
+                        <DicebearAvatar 
+                          seed={avatarSeed}
+                          size="2xl"
+                          className="ring-4 ring-white/30 shadow-2xl"
+                        />
                       </motion.div>
-                    )}
 
-                    <AnimatePresence>
-                      {(!selectedAvatar || showAvatars) && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="grid grid-cols-4 md:grid-cols-6 gap-3 overflow-hidden"
-                        >
-                          {AVATARS.map((avatar, index) => (
-                            <motion.button
-                              key={avatar.id}
-                              type="button"
-                              initial={{ scale: 0, rotate: -180 }}
-                              animate={{ scale: 1, rotate: 0 }}
-                              transition={{ delay: index * 0.03 }}
-                              whileHover={{ scale: 1.1, rotate: 5 }}
-                              whileTap={{ scale: 0.9 }}
-                              onClick={() => {
-                                setSelectedAvatar(avatar);
-                                setShowAvatars(false);
-                              }}
-                              className={`
-                                w-full aspect-square bg-gradient-to-br ${avatar.color} 
-                                rounded-2xl flex items-center justify-center shadow-lg 
-                                text-3xl transition-all
-                                ${selectedAvatar?.id === avatar.id ? 'ring-4 ring-yellow-300 ring-offset-2 ring-offset-transparent' : ''}
-                              `}
-                            >
-                              {avatar.emoji}
-                            </motion.button>
-                          ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleRandomizeAvatar}
+                        className="bg-white/10 border-white/30 text-white hover:bg-white/20 gap-2"
+                      >
+                        <Shuffle className="w-4 h-4" />
+                        🎲 Randomize Avatar
+                      </Button>
 
-                    {selectedAvatar && !showAvatars && (
-                      <div className="text-center mt-3">
-                        <button
-                          type="button"
-                          onClick={() => setShowAvatars(true)}
-                          className="text-sm text-white/70 hover:text-white underline"
-                        >
-                          Change avatar
-                        </button>
-                      </div>
-                    )}
+                      <p className="text-xs text-white/60 text-center max-w-xs">
+                        Your avatar will be unique in this quiz room
+                      </p>
+                    </div>
                   </div>
 
                   <motion.div
@@ -305,7 +288,7 @@ const JoinQuiz = () => {
                   >
                     <Button
                       type="submit"
-                      disabled={loading || !name.trim() || !selectedAvatar}
+                      disabled={loading || !name.trim() || !avatarSeed}
                       className="w-full bg-yellow-400 hover:bg-yellow-500 text-purple-900 font-black text-2xl px-8 py-6 rounded-full shadow-xl disabled:opacity-50 transition-all"
                       style={{ fontFamily: 'Fredoka, sans-serif' }}
                     >
