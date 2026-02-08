@@ -6,7 +6,7 @@ import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import {
   Users, Play, Trophy, Copy, QrCode, Share2,
-  LogOut, Sparkles, Crown, Star
+  LogOut, Sparkles, Crown, Star, Clock, CheckCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -26,6 +26,17 @@ const AdminControl = () => {
   const [countdown, setCountdown] = useState(null);
   const [showQR, setShowQR] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
+  
+  // FIXED: Proper state tracking
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [totalQuestions, setTotalQuestions] = useState(0);
+  const [quizState, setQuizState] = useState('lobby');
+  const [answeredCount, setAnsweredCount] = useState(0);
+  
+  // Timer tracking
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [timerActive, setTimerActive] = useState(false);
+  const timerRef = useRef(null);
   
   const wsRef = useRef(null);
   const mountedRef = useRef(true);
@@ -64,6 +75,7 @@ const AdminControl = () => {
       const response = await axios.get(`${API}/admin/quiz/${code}`);
       if (mountedRef.current) {
         setQuiz(response.data);
+        setTotalQuestions(response.data.questions?.length || 0);
         setLoading(false);
       }
     } catch (error) {
@@ -83,6 +95,47 @@ const AdminControl = () => {
       console.error('Fetch participants error:', error);
     }
   }, [code]);
+
+  // Timer management
+  const startTimer = useCallback((questionIndex) => {
+    if (!quiz?.questions?.[questionIndex]) return;
+    
+    const timeLimit = quiz.questions[questionIndex].timeLimit || 20;
+    console.log(`⏱️ Admin timer started: ${timeLimit}s for Q${questionIndex}`);
+    
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    setTimeLeft(timeLimit);
+    setTimerActive(true);
+    
+    let currentTime = timeLimit;
+    timerRef.current = setInterval(() => {
+      currentTime -= 1;
+      setTimeLeft(currentTime);
+      
+      if (currentTime <= 0) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+        setTimerActive(false);
+        
+        // FIXED: Auto-reveal answers when time is up
+        console.log('⏰ Time up - auto-revealing answers');
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'show_answer' }));
+        }
+      }
+    }, 1000);
+  }, [quiz]);
+
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setTimerActive(false);
+  }, []);
 
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -120,12 +173,35 @@ const AdminControl = () => {
 
         case 'all_participants':
           setParticipants(data.participants || []);
+          if (data.current_question !== undefined) {
+            setCurrentQuestionIndex(data.current_question);
+          }
+          if (data.total_questions !== undefined) {
+            setTotalQuestions(data.total_questions);
+          }
+          if (data.quiz_state) {
+            setQuizState(data.quiz_state);
+          }
           break;
 
         case 'avatar_updated':
           setParticipants(prev => prev.map(p => 
             p.id === data.participantId ? { ...p, avatarSeed: data.avatarSeed } : p
           ));
+          break;
+
+        case 'answer_count':
+          setAnsweredCount(data.answeredCount || 0);
+          break;
+
+        case 'sync_state':
+          // FIXED: Update admin state from server
+          if (data.current_question !== undefined) {
+            setCurrentQuestionIndex(data.current_question);
+          }
+          if (data.quiz_state) {
+            setQuizState(data.quiz_state);
+          }
           break;
 
         case 'ping':
@@ -148,6 +224,7 @@ const AdminControl = () => {
       console.log('Admin WebSocket disconnected');
       if (mountedRef.current) {
         setWsConnected(false);
+        stopTimer();
         wsRef.current = null;
         setTimeout(() => {
           if (mountedRef.current && !wsRef.current) {
@@ -156,7 +233,7 @@ const AdminControl = () => {
         }, 3000);
       }
     };
-  }, [code]);
+  }, [code, stopTimer]);
 
   const handleStartQuiz = useCallback(() => {
     if (participants.length === 0) {
@@ -167,6 +244,7 @@ const AdminControl = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'quiz_starting' }));
       setCountdown(5);
+      setCurrentQuestionIndex(0); // FIXED: Reset to 0
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     } else {
       toast.error('❌ Connection lost');
@@ -189,6 +267,9 @@ const AdminControl = () => {
 
     const timer = setTimeout(() => {
       if (countdown === 1) {
+        // Start the timer when quiz begins
+        setQuizState('question');
+        startTimer(0);
         navigate(`/quiz/${code}`);
       } else {
         setCountdown(countdown - 1);
@@ -196,7 +277,7 @@ const AdminControl = () => {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [countdown, code, navigate]);
+  }, [countdown, code, navigate, startTimer]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -211,12 +292,13 @@ const AdminControl = () => {
     return () => {
       mountedRef.current = false;
       clearInterval(pollInterval);
+      stopTimer();
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.close();
         wsRef.current = null;
       }
     };
-  }, [fetchQuizDetails, fetchParticipants, connectWebSocket]);
+  }, [fetchQuizDetails, fetchParticipants, connectWebSocket, stopTimer]);
 
   if (loading) {
     return (
@@ -279,6 +361,20 @@ const AdminControl = () => {
                 className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400' : 'bg-red-400'}`}
               />
             </div>
+            {/* FIXED: Display current question properly */}
+            {quizState !== 'lobby' && totalQuestions > 0 && (
+              <div className="flex items-center gap-2 mt-1">
+                <Clock className="w-4 h-4 text-yellow-300" />
+                <p className="text-yellow-300 text-sm font-bold">
+                  Question {currentQuestionIndex + 1} of {totalQuestions}
+                </p>
+                {timerActive && (
+                  <Badge className="bg-orange-500 text-white ml-2">
+                    {timeLeft}s
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -287,6 +383,13 @@ const AdminControl = () => {
           animate={{ x: 0, opacity: 1 }}
           className="flex items-center gap-2"
         >
+          {quizState !== 'lobby' && (
+            <div className="text-white text-sm font-semibold flex items-center gap-2 bg-white/20 rounded-full px-4 py-2">
+              <CheckCircle className="w-5 h-5 text-green-300" />
+              <span>{answeredCount} / {participants.length} answered</span>
+            </div>
+          )}
+          
           <Button
             variant="ghost"
             size="icon"
@@ -385,7 +488,7 @@ const AdminControl = () => {
               className="grid grid-cols-4 gap-4 max-w-3xl mx-auto"
             >
               <Card className="bg-white/10 backdrop-blur-md border-white/20 p-4">
-                <div className="text-4xl font-black text-white">{quiz?.questionsCount || 0}</div>
+                <div className="text-4xl font-black text-white">{totalQuestions}</div>
                 <div className="text-sm font-semibold text-white/80 mt-1">Questions</div>
               </Card>
               <Card className="bg-white/10 backdrop-blur-md border-white/20 p-4">
@@ -491,7 +594,7 @@ const AdminControl = () => {
           </motion.div>
 
           {/* Control Buttons */}
-          {countdown === null && (
+          {countdown === null && quizState === 'lobby' && (
             <motion.div
               initial={{ y: 50, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}

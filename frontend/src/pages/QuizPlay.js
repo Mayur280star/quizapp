@@ -39,31 +39,31 @@ const QuizPlay = () => {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // FIXED: Proper state management
+  // State management
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState(null);
   const [answered, setAnswered] = useState(false);
   const [result, setResult] = useState(null);
   const [showAnswerReveal, setShowAnswerReveal] = useState(false);
   
-  // Timer
+  // Timer - Optimized with server time sync
   const [timeLeft, setTimeLeft] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
   const timerRef = useRef(null);
-  const startTimeRef = useRef(null);
+  const questionStartTimeRef = useRef(null);
   
   const [score, setScore] = useState(0);
   const wsRef = useRef(null);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [totalParticipants, setTotalParticipants] = useState(0);
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
   
   const isAdmin = localStorage.getItem('isAdmin') === 'true';
   const participantId = localStorage.getItem('participantId');
 
-  // Reset state for new question
+  // OPTIMIZED: Reset state for new question
   const resetQuestionState = useCallback(() => {
-    console.log('🔄 Resetting question state');
-    
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -76,44 +76,45 @@ const QuizPlay = () => {
     setAnsweredCount(0);
     setTimerActive(false);
     setTimeLeft(0);
-    startTimeRef.current = null;
+    questionStartTimeRef.current = null;
   }, []);
 
-  // Start timer
-  const startTimer = useCallback((questionIndex) => {
+  // OPTIMIZED: Server-synced timer
+  const startTimer = useCallback((questionIndex, serverStartTime = null) => {
     if (isAdmin) return;
     
     const question = questions[questionIndex];
-    if (!question) {
-      console.error('Cannot start timer: question not found');
-      return;
-    }
+    if (!question) return;
     
     const timeLimit = question.timeLimit || 20;
-    console.log(`⏱️ Starting timer for Q${questionIndex}: ${timeLimit}s`);
     
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
     
+    // Use server time for perfect sync
+    const now = serverStartTime || Date.now();
+    questionStartTimeRef.current = now;
+    
     setTimeLeft(timeLimit);
     setTimerActive(true);
-    startTimeRef.current = Date.now();
     
-    let currentTime = timeLimit;
+    // Update every 100ms for smooth display
     timerRef.current = setInterval(() => {
-      currentTime -= 1;
-      setTimeLeft(currentTime);
+      const elapsed = (Date.now() - questionStartTimeRef.current) / 1000;
+      const remaining = Math.max(0, timeLimit - elapsed);
+      const roundedTime = Math.ceil(remaining);
       
-      if (currentTime <= 0) {
+      setTimeLeft(roundedTime);
+      
+      if (remaining <= 0) {
         clearInterval(timerRef.current);
         timerRef.current = null;
         setTimerActive(false);
       }
-    }, 1000);
+    }, 100);
   }, [questions, isAdmin]);
 
-  // Stop timer
   const stopTimer = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -138,6 +139,7 @@ const QuizPlay = () => {
     }
   }, [code, navigate, isAdmin, participantId]);
 
+  // OPTIMIZED: WebSocket with instant reconnection
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
@@ -147,6 +149,7 @@ const QuizPlay = () => {
 
     socket.onopen = () => {
       console.log('✓ QuizPlay WebSocket connected');
+      reconnectAttempts.current = 0;
 
       if (isAdmin) {
         socket.send(JSON.stringify({ type: 'admin_joined', code }));
@@ -160,7 +163,6 @@ const QuizPlay = () => {
 
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      console.log('📨 QuizPlay received:', data);
       
       switch (data.type) {
         case 'answer_count': {
@@ -170,37 +172,46 @@ const QuizPlay = () => {
         }
 
         case 'sync_state': {
-          // FIXED: Handle rejoin
-          console.log('🔄 Syncing state:', data);
+          console.log('🔄 Sync state:', data);
           setCurrentQuestionIndex(data.current_question || 0);
           setShowAnswerReveal(data.show_answers || false);
           
           if (data.quiz_state === 'question' && !data.show_answers) {
             resetQuestionState();
-            setTimeout(() => startTimer(data.current_question || 0), 200);
+            // Start timer with server time
+            setTimeout(() => {
+              const serverTime = data.question_start_time || data.server_time;
+              startTimer(data.current_question || 0, serverTime);
+            }, 50);
           }
           break;
         }
 
         case 'quiz_starting': {
-          console.log('🎬 Quiz starting - Question 0');
+          console.log('🎬 Quiz starting');
           setCurrentQuestionIndex(0);
           resetQuestionState();
-          setTimeout(() => startTimer(0), 200);
+          setTimeout(() => {
+            const serverTime = data.question_start_time || data.server_time;
+            startTimer(0, serverTime);
+          }, 50);
           break;
         }
 
         case 'next_question': {
           const qIndex = typeof data.current_question === 'number' ? data.current_question : 0;
-          console.log(`➡️ Next question - Question ${qIndex}`);
+          console.log(`➡️ Next question: ${qIndex}`);
           setCurrentQuestionIndex(qIndex);
           resetQuestionState();
-          setTimeout(() => startTimer(qIndex), 200);
+          setTimeout(() => {
+            const serverTime = data.question_start_time || data.server_time;
+            startTimer(qIndex, serverTime);
+          }, 50);
           break;
         }
 
         case 'show_answer': {
-          console.log('👁️ Showing answers');
+          console.log('👁️ Show answers');
           setShowAnswerReveal(true);
           stopTimer();
           
@@ -215,7 +226,7 @@ const QuizPlay = () => {
         }
 
         case 'show_leaderboard': {
-          console.log('🏆 Showing leaderboard');
+          console.log('🏆 Show leaderboard');
           stopTimer();
           const questionParam = typeof data.current_question === 'number' 
             ? data.current_question 
@@ -225,14 +236,14 @@ const QuizPlay = () => {
         }
 
         case 'show_podium': {
-          console.log('🎉 Showing podium');
+          console.log('🎉 Show podium');
           stopTimer();
           navigate(`/podium/${code}`);
           break;
         }
 
         case 'ping': {
-          socket.send(JSON.stringify({ type: 'pong' }));
+          socket.send(JSON.stringify({ type: 'pong', t: Date.now() }));
           break;
         }
 
@@ -242,14 +253,22 @@ const QuizPlay = () => {
     };
 
     socket.onerror = (error) => {
-      console.error('QuizPlay WebSocket error:', error);
+      console.error('WebSocket error:', error);
     };
 
     socket.onclose = () => {
-      console.log('QuizPlay WebSocket closed');
+      console.log('WebSocket closed');
       stopTimer();
       wsRef.current = null;
-      setTimeout(connectWebSocket, 3000);
+      
+      // Instant reconnection with exponential backoff
+      if (reconnectAttempts.current < maxReconnectAttempts) {
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 5000);
+        reconnectAttempts.current++;
+        setTimeout(connectWebSocket, delay);
+      } else {
+        toast.error('Connection lost. Please refresh.');
+      }
     };
 
     return () => {
@@ -276,7 +295,6 @@ const QuizPlay = () => {
     }
   }, [questions.length, connectWebSocket]);
 
-  // Cleanup timer
   useEffect(() => {
     return () => {
       if (timerRef.current) {
@@ -304,17 +322,19 @@ const QuizPlay = () => {
     }
   }, [timeLeft, timerActive, answered, isAdmin, currentQuestionIndex, participantId, stopTimer]);
 
+  // OPTIMIZED: Instant answer submission
   const handleSubmit = async () => {
     if (selectedOption === null || answered || isAdmin) return;
     
-    const timeTaken = startTimeRef.current 
-      ? (Date.now() - startTimeRef.current) / 1000 
+    const timeTaken = questionStartTimeRef.current 
+      ? (Date.now() - questionStartTimeRef.current) / 1000 
       : 0;
     
+    // Immediately disable UI
     setAnswered(true);
     stopTimer();
     
-    console.log(`📤 Submitting Q${currentQuestionIndex}: option ${selectedOption}, time ${timeTaken.toFixed(2)}s`);
+    console.log(`📤 Submit Q${currentQuestionIndex}: option ${selectedOption}, time ${timeTaken.toFixed(2)}s`);
     
     try {
       const response = await axios.post(`${API}/submit-answer`, {
@@ -346,6 +366,7 @@ const QuizPlay = () => {
       console.error('Submit answer error:', error);
       const errorMsg = error.response?.data?.detail || error.response?.data?.error || 'Failed to submit';
       
+      // If already answered, keep UI disabled
       if (!errorMsg.includes('already answered')) {
         setAnswered(false);
         startTimer(currentQuestionIndex);
@@ -451,7 +472,7 @@ const QuizPlay = () => {
         ))}
       </div>
 
-      {/* Header - FIXED */}
+      {/* Header */}
       <div className="absolute top-0 left-0 right-0 bg-white/10 backdrop-blur-md py-3 md:py-4 px-4 md:px-8 flex items-center justify-between z-10">
         <div className="flex items-center gap-2 md:gap-4">
           <div className="text-white text-lg md:text-2xl font-bold">
@@ -562,18 +583,25 @@ const QuizPlay = () => {
             {currentQuestion.options.map((option, index) => {
               const colorScheme = ANSWER_COLORS[index];
               const isSelected = selectedOption === index;
-              const isCorrect = showAnswerReveal && result && result.correctAnswer === index;
-              const isWrong = showAnswerReveal && result && selectedOption === index && !result.correct;
+              
+              const correctAnswer = result?.correctAnswer;
+              const isCorrectAnswer = showAnswerReveal && (
+                Array.isArray(correctAnswer) 
+                  ? correctAnswer.includes(index)
+                  : correctAnswer === index
+              );
+              const isWrongSelection = showAnswerReveal && isSelected && !isCorrectAnswer;
+              
               const ShapeIcon = SHAPE_ICONS[colorScheme.shape];
 
               let buttonStyle = {};
               let borderStyle = '';
               
               if (showAnswerReveal) {
-                if (isCorrect) {
+                if (isCorrectAnswer) {
                   buttonStyle = { backgroundColor: '#10B981' };
                   borderStyle = 'ring-4 md:ring-8 ring-green-400';
-                } else if (isWrong) {
+                } else if (isWrongSelection) {
                   buttonStyle = { backgroundColor: '#EF4444' };
                   borderStyle = 'ring-4 md:ring-8 ring-red-400';
                 } else {
@@ -645,12 +673,12 @@ const QuizPlay = () => {
                         transition={{ type: "spring", delay: 0.2 }}
                         className="absolute top-2 right-2 md:top-8 md:right-8"
                       >
-                        {isCorrect && (
+                        {isCorrectAnswer && (
                           <div className="w-10 h-10 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center">
                             <Check className="w-6 h-6 md:w-10 md:h-10 text-green-500" strokeWidth={4} />
                           </div>
                         )}
-                        {isWrong && (
+                        {isWrongSelection && (
                           <div className="w-10 h-10 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center">
                             <X className="w-6 h-6 md:w-10 md:h-10 text-red-500" strokeWidth={4} />
                           </div>
