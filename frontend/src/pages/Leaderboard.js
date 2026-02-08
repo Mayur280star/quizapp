@@ -212,105 +212,106 @@ const Leaderboard = () => {
             className="bg-white/10 backdrop-blur-md rounded-3xl shadow-2xl p-4 md:p-8 border-2 border-white/20 mb-8"
           >
             <div className="space-y-3">
-              <AnimatePresence>
-                {leaderboard.map((entry, index) => {
-                  const isCurrentPlayer = entry.participantId === participantId;
-                  const isTop3 = index < 3;
-                  
-                  return (
-                    <motion.div
-                      key={entry.participantId}
-                      initial={{ x: -100, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      transition={{ delay: index * 0.05, type: "spring" }}
-                      className={`
-                        relative overflow-hidden rounded-2xl p-4 md:p-6 shadow-lg
-                        transition-all duration-300 hover:scale-[1.02]
-                        ${isCurrentPlayer 
-                          ? 'bg-gradient-to-r from-yellow-400 to-orange-500 ring-4 ring-yellow-300 scale-105' 
-                          : isTop3
-                          ? 'bg-gradient-to-r from-purple-500 to-pink-500'
-                          : 'bg-white/20 backdrop-blur-sm'
-                        }
-                      `}
-                    >
-                      {/* CRITICAL FIX: Position Number Badge */}
-                      <div className="absolute -left-2 -top-2">
-                        <div className={`
-                          w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center font-black text-xl md:text-2xl
-                          ${isTop3 
-                            ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-xl' 
-                            : 'bg-white text-gray-700'
-                          }
-                        `}>
-                          {index === 0 && <Crown className="w-6 h-6 md:w-7 md:h-7" />}
-                          {index === 1 && <Medal className="w-6 h-6 md:w-7 md:h-7" />}
-                          {index === 2 && <Star className="w-6 h-6 md:w-7 md:h-7" />}
-                          {index > 2 && (index + 1)}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4 md:gap-6 pl-10 md:pl-12">
-                        <motion.div
-                          whileHover={{ scale: 1.1, rotate: 5 }}
-                          className="flex-shrink-0"
-                        >
-                          <DicebearAvatar 
-                            seed={entry.avatarSeed}
-                            size="lg"
-                            className="ring-4 ring-white/50 shadow-xl"
-                          />
-                        </motion.div>
-
-                        <div className="flex-1 min-w-0">
-                          <h3 className={`
-                            text-xl md:text-2xl font-bold truncate
-                            ${isCurrentPlayer ? 'text-white' : 'text-white'}
-                          `}>
-                            {entry.name}
-                            {isCurrentPlayer && ' (You)'}
-                          </h3>
-                          <div className="flex items-center gap-2 mt-1">
-                            <TrendingUp className="w-4 h-4 text-white/80" />
-                            <span className="text-sm md:text-base text-white/80 font-semibold">
-                              {entry.totalTime.toFixed(1)}s
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-full px-4 md:px-6 py-2 md:py-3 flex-shrink-0">
-                          <Star className="w-5 h-5 md:w-6 md:h-6 text-yellow-300" />
-                          <span className="text-2xl md:text-3xl font-black text-white">
-                            {entry.score}
-                          </span>
-                        </div>
-                      </div>
-
-                      {isCurrentPlayer && (
-                        <motion.div
-                          className="absolute inset-0 bg-white/20"
-                          animate={{ opacity: [0.2, 0, 0.2] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                        />
-                      )}
-
-                      {index === 0 && (
-                        <motion.div
-                          animate={{ 
-                            y: [0, -5, 0],
-                            rotate: [0, 5, -5, 0]
-                          }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                          className="absolute top-2 right-2"
-                        >
-                          <Trophy className="w-6 h-6 md:w-8 md:h-8 text-yellow-300" />
-                        </motion.div>
-                      )}
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
+  <AnimatePresence>
+    {leaderboard.map((entry, index) => {
+      const isCurrentPlayer = entry.participantId === participantId;
+      const isTop3 = index < 3;
+      
+      return (
+        <motion.div
+          key={entry.participantId}
+          initial={{ x: -100, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ delay: index * 0.05, type: "spring" }}
+          className={`
+            relative overflow-hidden rounded-2xl p-4 md:p-6 shadow-lg
+            transition-all duration-300 hover:scale-[1.02]
+            ${isCurrentPlayer 
+              ? 'bg-gradient-to-r from-yellow-400 to-orange-500 ring-4 ring-yellow-300 scale-105' 
+              : isTop3
+              ? 'bg-gradient-to-r from-purple-500 to-pink-500'
+              : 'bg-white/20 backdrop-blur-sm'
+            }
+          `}
+        >
+          {/* CRITICAL FIX: Position Number Badge */}
+          <div className="absolute -left-2 -top-2">
+            <div className={`
+              w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center font-black text-xl md:text-2xl
+              ${isTop3 
+                ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-xl' 
+                : 'bg-white text-gray-700'
+              }
+            `}>
+              {/* Show icons for top 3, numbers for others */}
+              {index === 0 && <Crown className="w-6 h-6 md:w-7 md:h-7" />}
+              {index === 1 && <Medal className="w-6 h-6 md:w-7 md:h-7" />}
+              {index === 2 && <Star className="w-6 h-6 md:w-7 md:h-7" />}
+              {index > 2 && (index + 1)}
             </div>
+          </div>
+
+          <div className="flex items-center gap-4 md:gap-6 pl-10 md:pl-12">
+            <motion.div
+              whileHover={{ scale: 1.1, rotate: 5 }}
+              className="flex-shrink-0"
+            >
+              <DicebearAvatar 
+                seed={entry.avatarSeed}
+                size="lg"
+                className="ring-4 ring-white/50 shadow-xl"
+              />
+            </motion.div>
+
+            <div className="flex-1 min-w-0">
+              <h3 className={`
+                text-xl md:text-2xl font-bold truncate
+                ${isCurrentPlayer ? 'text-white' : 'text-white'}
+              `}>
+                {entry.name}
+                {isCurrentPlayer && ' (You)'}
+              </h3>
+              <div className="flex items-center gap-2 mt-1">
+                <TrendingUp className="w-4 h-4 text-white/80" />
+                <span className="text-sm md:text-base text-white/80 font-semibold">
+                  {entry.totalTime.toFixed(1)}s
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-full px-4 md:px-6 py-2 md:py-3 flex-shrink-0">
+              <Star className="w-5 h-5 md:w-6 md:h-6 text-yellow-300" />
+              <span className="text-2xl md:text-3xl font-black text-white">
+                {entry.score}
+              </span>
+            </div>
+          </div>
+
+          {isCurrentPlayer && (
+            <motion.div
+              className="absolute inset-0 bg-white/20"
+              animate={{ opacity: [0.2, 0, 0.2] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+          )}
+
+          {index === 0 && (
+            <motion.div
+              animate={{ 
+                y: [0, -5, 0],
+                rotate: [0, 5, -5, 0]
+              }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="absolute top-2 right-2"
+            >
+              <Trophy className="w-6 h-6 md:w-8 md:h-8 text-yellow-300" />
+            </motion.div>
+          )}
+        </motion.div>
+      );
+    })}
+  </AnimatePresence>
+</div>
           </motion.div>
 
           {isAdmin && (

@@ -1,3 +1,4 @@
+// QuizPlay.js
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -9,6 +10,10 @@ import { Button } from '@/components/ui/button';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
+
+
+
+
 
 const ANSWER_COLORS = [
   { bg: '#E21B3C', hover: '#C41830', shape: 'triangle', name: 'Red' },
@@ -33,35 +38,48 @@ const SHAPE_ICONS = {
 };
 
 const QuizPlay = () => {
+
+  const resetQuestionState = useCallback(() => {
+  setQuestionStarted(false);
+  setAnswered(false);
+  setResult(null);
+  setSelectedOption(null);
+  setShowAnswerReveal(false);
+  setAnsweredCount(0);
+  setStartTime(null);
+  setTimeLeft(0);
+}, []);
+
+  
   const { code } = useParams();
   const navigate = useNavigate();
   
-  // Question data
   const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   
-  // Answer state
   const [selectedOption, setSelectedOption] = useState(null);
   const [answered, setAnswered] = useState(false);
   const [result, setResult] = useState(null);
   const [showAnswerReveal, setShowAnswerReveal] = useState(false);
   
-  // Timer state
   const [timeLeft, setTimeLeft] = useState(0);
   const [startTime, setStartTime] = useState(null);
   const [questionStarted, setQuestionStarted] = useState(false);
   
-  // Score tracking
   const [score, setScore] = useState(0);
   
-  // WebSocket and admin state
   const wsRef = useRef(null);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [totalParticipants, setTotalParticipants] = useState(0);
   
   const isAdmin = localStorage.getItem('isAdmin') === 'true';
   const participantId = localStorage.getItem('participantId');
+
+
+  const [serverQuestionIndex, setServerQuestionIndex] = useState(0);
+  const [quizState, setQuizState] = useState('lobby');
+
 
   const fetchQuestions = useCallback(async () => {
     try {
@@ -87,70 +105,87 @@ const QuizPlay = () => {
     wsRef.current = socket;
 
     socket.onopen = () => {
-      console.log('✓ QuizPlay WebSocket connected');
-      if (isAdmin) {
-        socket.send(JSON.stringify({ type: 'admin_joined', code }));
-      }
-    };
+  console.log('✓ QuizPlay WebSocket connected');
+
+  if (isAdmin) {
+    socket.send(JSON.stringify({ type: 'admin_joined', code }));
+  } else {
+    socket.send(JSON.stringify({
+      type: 'participant_joined',
+      participantId
+    }));
+  }
+};
+
 
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
       console.log('QuizPlay received:', data);
       
       switch (data.type) {
-        case 'answer_count':
-          setAnsweredCount(data.answeredCount);
-          setTotalParticipants(data.totalParticipants);
-          break;
-          
-        case 'show_answer':
-          setShowAnswerReveal(true);
-          if (!isAdmin && result?.correct) {
-            confetti({
-              particleCount: 100,
-              spread: 70,
-              origin: { y: 0.6 }
-            });
-          }
-          break;
-          
-        case 'show_leaderboard':
-          const questionParam = data.current_question !== undefined ? data.current_question : currentIndex;
-          navigate(`/leaderboard/${code}?question=${questionParam}`);
-          break;
-          
-        case 'next_question':
-          // CRITICAL FIX: Backend sends us the new question index
-          const nextIdx = data.current_question;
-          console.log('📝 Moving to question:', nextIdx);
-          
-          if (nextIdx !== undefined && nextIdx < questions.length) {
-            // Update question index FIRST
-            setCurrentIndex(nextIdx);
-            
-            // Reset all state for new question
-            setQuestionStarted(false);
-            setAnswered(false);
-            setResult(null);
-            setSelectedOption(null);
-            setShowAnswerReveal(false);
-            setAnsweredCount(0);
-            setStartTime(null);
-            setTimeLeft(0);
-          }
-          break;
+  case 'answer_count': {
+    setAnsweredCount(data.answeredCount);
+    setTotalParticipants(data.totalParticipants);
+    break;
+  }
 
-        case 'show_podium':
-          navigate(`/podium/${code}`);
-          break;
+  case 'quiz_starting': {
+    setQuizState('question');
+    const qIndex = typeof data.current_question === 'number' ? data.current_question : 0;
+    setServerQuestionIndex(qIndex);
+    setCurrentIndex(qIndex);
+    resetQuestionState();
+    break;
+  }
 
-        case 'ping':
-          socket.send(JSON.stringify({ type: 'pong' }));
-          break;
-          
-        default:
-          break;
-      }
+  case 'next_question': {
+    setQuizState('question');
+    if (typeof data.current_question === 'number') {
+      setServerQuestionIndex(data.current_question);
+      setCurrentIndex(data.current_question); // UI only
+      resetQuestionState();
+    }
+    break;
+  }
+
+  case 'show_answer': {
+    setShowAnswerReveal(true);
+    if (!isAdmin && result?.correct) {
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+    }
+    break;
+  }
+
+  case 'show_leaderboard': {
+    setQuizState('leaderboard');
+    const questionParam =
+      typeof data.current_question === 'number'
+        ? data.current_question
+        : serverQuestionIndex;
+
+    navigate(`/leaderboard/${code}?question=${questionParam}`);
+    break;
+  }
+
+  case 'show_podium': {
+    setQuizState('podium');
+    navigate(`/podium/${code}`);
+    break;
+  }
+
+  case 'ping': {
+    socket.send(JSON.stringify({ type: 'pong' }));
+    break;
+  }
+
+  default:
+    break;
+}
+
     };
 
     socket.onerror = (error) => {
@@ -187,7 +222,6 @@ const QuizPlay = () => {
     }
   }, [questions.length, connectWebSocket]);
 
-  // Start timer when question loads
   useEffect(() => {
     if (questions.length > 0 && currentIndex < questions.length && !questionStarted) {
       setQuestionStarted(true);
@@ -196,7 +230,6 @@ const QuizPlay = () => {
     }
   }, [currentIndex, questions, questionStarted]);
 
-  // Timer countdown
   useEffect(() => {
     if (timeLeft > 0 && !answered && questionStarted && !isAdmin) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
@@ -206,40 +239,25 @@ const QuizPlay = () => {
     }
   }, [timeLeft, answered, questions.length, questionStarted, isAdmin]);
 
-  const handleAutoSubmit = useCallback(async () => {
-    if (answered || isAdmin) return;
-    setAnswered(true);
-    
-    const timeTaken = (Date.now() - startTime) / 1000;
-    
-    try {
-      const response = await axios.post(`${API}/submit-answer`, {
-        participantId,
-        quizCode: code,
-        questionIndex: currentIndex,
-        selectedOption: selectedOption !== null ? selectedOption : -1,
-        timeTaken
-      });
-      
-      setResult(response.data);
-      toast.error("⏰ Time's up!");
-      
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ 
-          type: 'answer_submitted',
-          participantId 
-        }));
-      }
-    } catch (error) {
-      console.error('Auto-submit error:', error);
-      const errorMsg = error.response?.data?.detail || 'Failed to auto-submit';
-      toast.error(errorMsg);
-      setAnswered(false);
-    }
-  }, [answered, isAdmin, startTime, participantId, code, currentIndex, selectedOption]);
+  const handleAutoSubmit = useCallback(() => {
+  if (answered || isAdmin) return;
+
+  setAnswered(true);
+  toast.error("⏰ Time's up!");
+
+  if (wsRef.current?.readyState === WebSocket.OPEN) {
+    wsRef.current.send(JSON.stringify({
+      type: 'auto_submit',
+      participantId,
+      questionIndex: serverQuestionIndex
+    }));
+  }
+}, [answered, isAdmin, participantId, serverQuestionIndex]);
+
+
 
   const handleSubmit = async () => {
-    if (selectedOption === null || answered || isAdmin) return;
+if (selectedOption === null || answered || isAdmin) return;
     
     setAnswered(true);
     const timeTaken = (Date.now() - startTime) / 1000;
@@ -248,7 +266,7 @@ const QuizPlay = () => {
       const response = await axios.post(`${API}/submit-answer`, {
         participantId,
         quizCode: code,
-        questionIndex: currentIndex,
+        questionIndex: serverQuestionIndex,
         selectedOption,
         timeTaken
       });
@@ -263,12 +281,7 @@ const QuizPlay = () => {
         toast.error('❌ Wrong answer');
       }
       
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ 
-          type: 'answer_submitted',
-          participantId 
-        }));
-      }
+      
     } catch (error) {
       console.error('Submit answer error:', error);
       const errorMsg = error.response?.data?.detail || 'Failed to submit answer';
@@ -287,6 +300,12 @@ const QuizPlay = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'show_leaderboard' }));
     }
+  };
+
+  const isImageUrl = (text) => {
+    if (!text || typeof text !== 'string') return false;
+    return /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(text) || 
+           text.startsWith('http') && (text.includes('image') || text.includes('img'));
   };
 
   if (loading) {
@@ -324,11 +343,9 @@ const QuizPlay = () => {
   }
 
   const currentQuestion = questions[currentIndex];
-  const isLastQuestion = currentIndex === questions.length - 1;
 
   return (
     <div className="min-h-screen bg-[#46178F] relative overflow-hidden">
-      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(30)].map((_, i) => (
           <motion.div
@@ -353,12 +370,10 @@ const QuizPlay = () => {
         ))}
       </div>
 
-      {/* Header - FIXED QUESTION COUNTER */}
       <div className="absolute top-0 left-0 right-0 bg-white/10 backdrop-blur-md py-3 md:py-4 px-4 md:px-8 flex items-center justify-between z-10">
         <div className="flex items-center gap-2 md:gap-4">
-          {/* CRITICAL FIX: Display currentIndex + 1 which updates properly */}
           <div className="text-white text-lg md:text-2xl font-bold">
-            <span className="text-yellow-300">Question</span> {currentIndex + 1} of {questions.length}
+            <span className="text-yellow-300">Question</span> {serverQuestionIndex + 1} of {questions.length}
           </div>
           
           {!isAdmin && (
@@ -381,23 +396,20 @@ const QuizPlay = () => {
 
       <div className="pt-16 md:pt-24 pb-8 md:pb-12 px-4 md:px-8">
         <div className="max-w-6xl mx-auto">
-          {/* Question Card */}
           <motion.div
             key={`question-${currentIndex}`}
             initial={{ scale: 0.8, opacity: 0, y: 50 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             transition={{ type: "spring", duration: 0.6 }}
-            className="bg-white rounded-2xl md:rounded-3xl p-6 md:p-12 shadow-2xl mb-8 md:mb-12 text-center relative overflow-hidden"
+            className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-12 shadow-2xl mb-6 md:mb-12 text-center relative overflow-hidden"
           >
             {!isAdmin && (
               <motion.div
-                className="inline-block mb-6 md:mb-8"
-                animate={timeLeft <= 5 ? { 
-                  scale: [1, 1.2, 1],
-                } : {}}
+                className="inline-block mb-4 md:mb-8"
+                animate={timeLeft <= 5 ? { scale: [1, 1.2, 1] } : {}}
                 transition={{ duration: 0.5, repeat: timeLeft <= 5 ? Infinity : 0 }}
               >
-                <div className={`w-24 h-24 md:w-32 md:h-32 rounded-full flex items-center justify-center text-4xl md:text-5xl font-black transition-all duration-300 ${
+                <div className={`w-20 h-20 md:w-32 md:h-32 rounded-full flex items-center justify-center text-3xl md:text-5xl font-black transition-all duration-300 ${
                   timeLeft <= 5 ? 'bg-red-500 text-white animate-pulse' : 
                   timeLeft <= 10 ? 'bg-orange-500 text-white' :
                   'bg-gray-200 text-gray-700'
@@ -407,28 +419,57 @@ const QuizPlay = () => {
               </motion.div>
             )}
 
-            <motion.h2 
+            <motion.div
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="text-3xl md:text-5xl font-black text-gray-900 leading-tight px-2 md:px-4"
-              style={{ fontFamily: 'Fredoka, sans-serif' }}
+              className="max-w-4xl mx-auto"
             >
-              {currentQuestion.question}
-            </motion.h2>
+              {isImageUrl(currentQuestion.question) ? (
+                <img 
+                  src={currentQuestion.question} 
+                  alt="Question" 
+                  className="w-full max-h-[300px] md:max-h-[400px] object-contain rounded-lg mb-4 mx-auto"
+                />
+              ) : (
+                <h2 
+                  className="text-2xl md:text-5xl font-black text-gray-900 leading-tight px-2 md:px-4"
+                  style={{ 
+                    fontFamily: 'Fredoka, sans-serif',
+                    fontSize: 'clamp(1.5rem, 5vw, 3rem)'
+                  }}
+                >
+                  {currentQuestion.question}
+                </h2>
+              )}
+            </motion.div>
+
+            {currentQuestion.media && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.3 }}
+                className="mt-4 md:mt-6"
+              >
+                <img 
+                  src={currentQuestion.media} 
+                  alt="Question media" 
+                  className="w-full max-h-[250px] md:max-h-[350px] object-contain rounded-lg mx-auto"
+                />
+              </motion.div>
+            )}
 
             <div className="absolute bottom-0 left-0 right-0 h-2 bg-gray-200">
               <motion.div
                 className="h-full bg-purple-600"
                 initial={{ width: '0%' }}
-                animate={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
+                animate={{ width: `${((serverQuestionIndex + 1) / questions.length) * 100}%` }}
                 transition={{ duration: 0.5 }}
               />
             </div>
           </motion.div>
 
-          {/* Answer Options */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-8">
             {currentQuestion.options.map((option, index) => {
               const colorScheme = ANSWER_COLORS[index];
               const isSelected = selectedOption === index;
@@ -458,6 +499,8 @@ const QuizPlay = () => {
                 }
               }
 
+              const isOptionImage = isImageUrl(option);
+
               return (
                 <motion.button
                   key={index}
@@ -474,20 +517,35 @@ const QuizPlay = () => {
                   disabled={answered || isAdmin}
                   style={buttonStyle}
                   className={`
-                    relative overflow-hidden rounded-2xl md:rounded-3xl p-6 md:p-12
+                    relative overflow-hidden rounded-xl md:rounded-3xl p-4 md:p-8
                     transition-all duration-300 shadow-2xl
                     ${borderStyle}
                     ${(answered || isAdmin) ? 'cursor-not-allowed' : 'cursor-pointer'}
+                    ${isOptionImage ? 'min-h-[120px] md:min-h-[200px]' : 'min-h-[80px] md:min-h-[140px]'}
                   `}
                 >
-                  <div className="absolute top-4 md:top-8 left-4 md:left-8">
-                    <ShapeIcon />
+                  <div className="absolute top-2 left-2 md:top-8 md:left-8">
+                    <div className="scale-75 md:scale-100">
+                      <ShapeIcon />
+                    </div>
                   </div>
 
-                  <div className="text-left pl-16 md:pl-24">
-                    <span className="text-2xl md:text-4xl font-bold text-white">
-                      {option}
-                    </span>
+                  <div className={`${isOptionImage ? 'pt-12 md:pt-16' : 'text-left pl-12 md:pl-24 pr-2 md:pr-4'}`}>
+                    {isOptionImage ? (
+                      <img 
+                        src={option} 
+                        alt={`Option ${index + 1}`}
+                        className="w-full max-h-[150px] md:max-h-[200px] object-contain rounded-lg"
+                      />
+                    ) : (
+                      <span className="text-base md:text-4xl font-bold text-white leading-tight break-words"
+                        style={{
+                          fontSize: 'clamp(1rem, 3vw, 2.25rem)'
+                        }}
+                      >
+                        {option}
+                      </span>
+                    )}
                   </div>
 
                   <AnimatePresence>
@@ -496,16 +554,16 @@ const QuizPlay = () => {
                         initial={{ scale: 0, rotate: -180 }}
                         animate={{ scale: 1, rotate: 0 }}
                         transition={{ type: "spring", delay: 0.2 }}
-                        className="absolute top-4 md:top-8 right-4 md:right-8"
+                        className="absolute top-2 right-2 md:top-8 md:right-8"
                       >
                         {isCorrect && (
-                          <div className="w-12 h-12 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center">
-                            <Check className="w-8 h-8 md:w-10 md:h-10 text-green-500" strokeWidth={4} />
+                          <div className="w-10 h-10 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center">
+                            <Check className="w-6 h-6 md:w-10 md:h-10 text-green-500" strokeWidth={4} />
                           </div>
                         )}
                         {isWrong && (
-                          <div className="w-12 h-12 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center">
-                            <X className="w-8 h-8 md:w-10 md:h-10 text-red-500" strokeWidth={4} />
+                          <div className="w-10 h-10 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center">
+                            <X className="w-6 h-6 md:w-10 md:h-10 text-red-500" strokeWidth={4} />
                           </div>
                         )}
                       </motion.div>
@@ -525,7 +583,6 @@ const QuizPlay = () => {
             })}
           </div>
 
-          {/* Player Submit Button */}
           <AnimatePresence>
             {!isAdmin && !answered && selectedOption !== null && (
               <motion.div
@@ -552,7 +609,6 @@ const QuizPlay = () => {
             )}
           </AnimatePresence>
 
-          {/* Player Waiting Message */}
           {!isAdmin && answered && !showAnswerReveal && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -569,7 +625,6 @@ const QuizPlay = () => {
             </motion.div>
           )}
 
-          {/* Admin Controls */}
           <AnimatePresence>
             {isAdmin && (
               <motion.div
@@ -618,6 +673,14 @@ const QuizPlay = () => {
           </AnimatePresence>
         </div>
       </div>
+
+      <style jsx>{`
+        .break-words {
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+          hyphens: auto;
+        }
+      `}</style>
     </div>
   );
 };
