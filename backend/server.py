@@ -1,12 +1,10 @@
 """
-Quiz Arena Backend - OPTIMIZED VERSION
-Combines best features from both versions with all fixes and improvements
-- Explicit state machine with proper transitions
-- Enhanced error handling and validation
-- Quiz ended state handling
-- Proper WebSocket cleanup
-- Optimized database queries
-- DiceBear avatar system integrated
+Quiz Arena Backend - PRODUCTION READY
+Fixed Issues:
+1. Question index tracking
+2. Answer validation
+3. WebSocket state synchronization
+4. Rejoin handling
 """
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query
@@ -25,12 +23,10 @@ import string
 import asyncio
 import json
 
-# Logging configuration
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
 
 # ============================================================================
 # CONFIGURATION
@@ -57,17 +53,17 @@ mongo_client = None
 db = None
 manager = None
 
-
 # ============================================================================
-# STATE MACHINE - EXPLICIT QUIZ STATES
+# STATE MACHINE
 # ============================================================================
 
 
 class QuizState:
-    """Explicit state machine for quiz flow"""
+    """Quiz flow states"""
 
     LOBBY = "lobby"
     QUESTION = "question"
+    ANSWER_REVEAL = "answer_reveal"
     LEADERBOARD = "leaderboard"
     FINAL_LEADERBOARD = "final_leaderboard"
     PODIUM = "podium"
@@ -75,19 +71,12 @@ class QuizState:
 
 
 # ============================================================================
-# WEBSOCKET CONNECTION MANAGER WITH STATE MACHINE
+# WEBSOCKET CONNECTION MANAGER
 # ============================================================================
 
 
 class ConnectionManager:
-    """
-    Manages WebSocket connections and quiz state
-    Features:
-    - Connection pooling
-    - Heartbeat monitoring
-    - State machine enforcement
-    - Participant tracking
-    """
+    """Manages WebSocket connections and quiz state"""
 
     def __init__(self):
         self.active_connections: Dict[str, Set[WebSocket]] = {}
@@ -97,7 +86,7 @@ class ConnectionManager:
         self._lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket, quiz_code: str, user_id: str = None):
-        """Connect a WebSocket with proper initialization"""
+        """Connect WebSocket with initialization"""
         try:
             await websocket.accept()
         except Exception as e:
@@ -105,7 +94,7 @@ class ConnectionManager:
             return False
 
         async with self._lock:
-            # Initialize room if needed
+            # Initialize room
             if quiz_code not in self.active_connections:
                 self.active_connections[quiz_code] = set()
                 self.room_state[quiz_code] = {
@@ -115,13 +104,13 @@ class ConnectionManager:
                     "participants": {},
                     "answered": set(),
                     "admin_socket": None,
+                    "show_answers": False,
                 }
 
             self.active_connections[quiz_code].add(websocket)
 
-            # Handle user-specific connection
             if user_id:
-                # Close old socket if exists
+                # Close old socket
                 if user_id in self.user_sockets:
                     old_socket = self.user_sockets[user_id]
                     try:
@@ -144,11 +133,10 @@ class ConnectionManager:
             return True
 
     def disconnect(self, websocket: WebSocket, quiz_code: str, user_id: str = None):
-        """Disconnect a WebSocket with proper cleanup"""
+        """Disconnect WebSocket with cleanup"""
         if quiz_code in self.active_connections:
             self.active_connections[quiz_code].discard(websocket)
 
-            # Clean up empty rooms
             if not self.active_connections[quiz_code]:
                 del self.active_connections[quiz_code]
                 if quiz_code in self.room_state:
@@ -162,7 +150,6 @@ class ConnectionManager:
                 self.heartbeat_tasks[user_id].cancel()
                 del self.heartbeat_tasks[user_id]
 
-            # Remove from room state
             if quiz_code in self.room_state:
                 self.room_state[quiz_code]["participants"].pop(user_id, None)
                 self.room_state[quiz_code]["answered"].discard(user_id)
@@ -173,7 +160,7 @@ class ConnectionManager:
         logger.info(f"✗ Disconnected from {quiz_code}")
 
     async def broadcast(self, quiz_code: str, message: dict):
-        """Broadcast message to all connections in a room"""
+        """Broadcast message to all connections"""
         if quiz_code not in self.active_connections:
             return
 
@@ -187,12 +174,11 @@ class ConnectionManager:
                 logger.error(f"Broadcast error: {e}")
                 dead_sockets.append(conn)
 
-        # Clean up dead connections
         for socket in dead_sockets:
             self.active_connections[quiz_code].discard(socket)
 
     async def _heartbeat(self, ws: WebSocket, user_id: str):
-        """Send periodic heartbeat pings"""
+        """Send periodic heartbeat"""
         try:
             while True:
                 await asyncio.sleep(config.WS_HEARTBEAT_SEC)
@@ -205,44 +191,50 @@ class ConnectionManager:
         except Exception as e:
             logger.error(f"Heartbeat error for {user_id}: {e}")
 
-    # State machine methods
+    # State methods
     def set_state(self, quiz_code: str, state: str):
-        """Set quiz state (admin only)"""
+        """Set quiz state"""
         if quiz_code in self.room_state:
             self.room_state[quiz_code]["quiz_state"] = state
             logger.info(f"✓ Quiz {quiz_code} state: {state}")
 
     def get_state(self, quiz_code: str) -> str:
-        """Get current quiz state"""
+        """Get current state"""
         if quiz_code in self.room_state:
             return self.room_state[quiz_code]["quiz_state"]
         return QuizState.LOBBY
 
     def set_question(self, quiz_code: str, index: int):
-        """Set current question index"""
+        """Set current question"""
         if quiz_code in self.room_state:
             self.room_state[quiz_code]["current_question"] = index
             self.room_state[quiz_code]["answered"].clear()
+            self.room_state[quiz_code]["show_answers"] = False
             logger.info(f"✓ Quiz {quiz_code} question: {index}")
 
     def get_question(self, quiz_code: str) -> int:
-        """Get current question index"""
+        """Get current question"""
         if quiz_code in self.room_state:
             return self.room_state[quiz_code]["current_question"]
         return 0
 
+    def set_total_questions(self, quiz_code: str, total: int):
+        """Set total questions"""
+        if quiz_code in self.room_state:
+            self.room_state[quiz_code]["total_questions"] = total
+
     def mark_answered(self, quiz_code: str, user_id: str):
-        """Mark participant as having answered"""
+        """Mark participant answered"""
         if quiz_code in self.room_state:
             self.room_state[quiz_code]["answered"].add(user_id)
 
     def clear_answers(self, quiz_code: str):
-        """Clear answered set for new question"""
+        """Clear answered set"""
         if quiz_code in self.room_state:
             self.room_state[quiz_code]["answered"].clear()
 
     def get_answer_count(self, quiz_code: str) -> tuple:
-        """Get (answered, total) participant count"""
+        """Get answer count"""
         if quiz_code in self.room_state:
             state = self.room_state[quiz_code]
             answered = len(state["answered"])
@@ -250,27 +242,54 @@ class ConnectionManager:
             return answered, total
         return 0, 0
 
+    def set_show_answers(self, quiz_code: str, show: bool):
+        """Set show answers flag"""
+        if quiz_code in self.room_state:
+            self.room_state[quiz_code]["show_answers"] = show
+
+    def should_show_answers(self, quiz_code: str) -> bool:
+        """Check if answers should be shown"""
+        if quiz_code in self.room_state:
+            return self.room_state[quiz_code].get("show_answers", False)
+        return False
+
     def set_admin(self, quiz_code: str, websocket: WebSocket):
-        """Set admin socket for room"""
+        """Set admin socket"""
         if quiz_code in self.room_state:
             self.room_state[quiz_code]["admin_socket"] = websocket
             logger.info(f"✓ Admin set for {quiz_code}")
 
     def add_participant(self, quiz_code: str, participant: dict):
-        """Add participant to room tracking"""
+        """Add participant to tracking"""
         if quiz_code in self.room_state:
             user_id = participant.get("id")
             if user_id:
                 self.room_state[quiz_code]["participants"][user_id] = participant
 
     def get_participants(self, quiz_code: str) -> list:
-        """Get all participants in room"""
+        """Get all participants"""
         if quiz_code in self.room_state:
             return list(self.room_state[quiz_code]["participants"].values())
         return []
 
+    def get_room_state(self, quiz_code: str) -> dict:
+        """Get complete room state"""
+        if quiz_code in self.room_state:
+            return {
+                "quiz_state": self.room_state[quiz_code]["quiz_state"],
+                "current_question": self.room_state[quiz_code]["current_question"],
+                "total_questions": self.room_state[quiz_code]["total_questions"],
+                "show_answers": self.room_state[quiz_code].get("show_answers", False),
+            }
+        return {
+            "quiz_state": QuizState.LOBBY,
+            "current_question": 0,
+            "total_questions": 0,
+            "show_answers": False,
+        }
+
     async def close_room(self, quiz_code: str):
-        """Close all connections in a room"""
+        """Close all connections"""
         if quiz_code in self.active_connections:
             for socket in list(self.active_connections[quiz_code]):
                 try:
@@ -284,18 +303,16 @@ class ConnectionManager:
 
 
 # ============================================================================
-# APPLICATION LIFESPAN
+# LIFESPAN
 # ============================================================================
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application startup and shutdown"""
     global mongo_client, db, manager
 
     logger.info("🚀 Starting Quiz Arena API")
 
-    # Database connection
     try:
         mongo_client = AsyncIOMotorClient(
             config.MONGO_URL,
@@ -310,7 +327,6 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ MongoDB connection failed: {e}")
         raise
 
-    # Create indexes
     try:
         await db.quizzes.create_index("code", unique=True)
         await db.quizzes.create_index("status")
@@ -321,27 +337,25 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Index creation error: {e}")
 
-    # Initialize connection manager
     manager = ConnectionManager()
     logger.info("✓ Quiz Arena API ready")
 
     yield
 
-    # Shutdown
-    logger.info("🛑 Shutting down Quiz Arena API")
+    logger.info("🛑 Shutting down")
     if mongo_client:
         mongo_client.close()
     logger.info("✓ Shutdown complete")
 
 
 # ============================================================================
-# FASTAPI APPLICATION
+# FASTAPI APP
 # ============================================================================
 
 app = FastAPI(
     title="Quiz Arena API",
     version="2.0.0",
-    description="Real-time multiplayer quiz platform with state machine",
+    description="Production-ready multiplayer quiz platform",
     lifespan=lifespan,
 )
 
@@ -356,9 +370,8 @@ app.add_middleware(
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-
 # ============================================================================
-# PYDANTIC MODELS
+# MODELS
 # ============================================================================
 
 
@@ -424,16 +437,6 @@ class Participant(BaseModel):
     completedAt: Optional[str] = None
 
 
-class AvatarRequest(BaseModel):
-    quizCode: str
-    participantId: str
-
-
-class AvatarResponse(BaseModel):
-    seed: str
-    url: str
-
-
 class AnswerSubmit(BaseModel):
     participantId: str
     quizCode: str
@@ -458,14 +461,12 @@ class LeaderboardEntry(BaseModel):
 
 
 def generate_code(length: int = 6) -> str:
-    """Generate unique quiz code"""
     chars = string.ascii_uppercase + string.digits
     chars = chars.replace("O", "").replace("0", "").replace("I", "").replace("1", "")
     return "".join(random.choices(chars, k=length))
 
 
 async def verify_participant(pid: str, code: str) -> Optional[Dict]:
-    """Verify participant exists and update last active"""
     try:
         p = await db.participants.find_one({"id": pid, "quizCode": code}, {"_id": 0})
         if p:
@@ -482,7 +483,6 @@ async def verify_participant(pid: str, code: str) -> Optional[Dict]:
 async def is_avatar_unique(
     quiz_code: str, seed: str, exclude_participant: str = None
 ) -> bool:
-    """Check if avatar seed is unique in quiz room"""
     try:
         query = {"quizCode": quiz_code, "avatarSeed": seed}
         if exclude_participant:
@@ -497,7 +497,6 @@ async def is_avatar_unique(
 async def generate_unique_avatar(
     quiz_code: str, exclude_participant: str = None
 ) -> str:
-    """Generate unique avatar seed for quiz room"""
     max_attempts = 50
     for _ in range(max_attempts):
         seed = f"{quiz_code}-{uuid.uuid4().hex[:8]}-{int(datetime.now(timezone.utc).timestamp() * 1000)}"
@@ -506,32 +505,64 @@ async def generate_unique_avatar(
     return f"{quiz_code}-fallback-{uuid.uuid4().hex}"
 
 
-def calc_points(question: Dict, correct: bool, time_taken: float) -> tuple[int, int]:
-    """Calculate base points and time bonus"""
+def calc_points_v2(
+    question: Dict, correct: bool, time_taken: float, previous_answers: List[Dict]
+) -> tuple[int, int, int]:
+    """Kahoot-style scoring"""
     if not correct:
-        return 0, 0
+        return 0, 0, 0
 
     pts_cfg = question.get("points", "standard")
     if pts_cfg == "standard":
-        base = 1000
+        max_base = 1000
     elif pts_cfg == "double":
-        base = 2000
+        max_base = 2000
     elif pts_cfg == "noPoints":
-        base = 0
+        return 0, 0, 0
     elif isinstance(pts_cfg, int):
-        base = pts_cfg
+        max_base = pts_cfg
     else:
-        base = 1000
+        max_base = 1000
+
+    base_points = max_base // 2
 
     time_limit = question.get("timeLimit", 30)
-    time_pct = max(0, min(1, (time_limit - time_taken) / time_limit))
-    bonus = int(time_pct * 500)
 
-    return base, bonus
+    if time_limit == 0:
+        return max_base, 0, 0
+
+    if time_taken < 0.5:
+        time_bonus = max_base // 2
+    elif time_taken >= time_limit:
+        time_bonus = 0
+    else:
+        time_ratio = time_taken / time_limit
+        time_bonus = int((max_base // 2) * (1 - time_ratio))
+
+    streak_bonus = 0
+    consecutive_correct = 0
+
+    for ans in reversed(previous_answers):
+        if ans.get("isCorrect"):
+            consecutive_correct += 1
+        else:
+            break
+
+    current_streak = consecutive_correct + 1
+
+    if current_streak >= 5:
+        streak_bonus = 200
+    elif current_streak >= 4:
+        streak_bonus = 150
+    elif current_streak >= 3:
+        streak_bonus = 100
+    elif current_streak >= 2:
+        streak_bonus = 50
+
+    return base_points, time_bonus, streak_bonus
 
 
 async def calc_leaderboard(code: str) -> List[Dict]:
-    """Calculate and return sorted leaderboard"""
     try:
         parts = await db.participants.find({"quizCode": code}, {"_id": 0}).to_list(
             config.MAX_PARTICIPANTS
@@ -567,23 +598,15 @@ async def calc_leaderboard(code: str) -> List[Dict]:
 
 @app.get("/")
 async def root():
-    """API root endpoint"""
     return {
         "name": "Quiz Arena API",
         "version": "2.0.0",
         "status": "active",
-        "features": [
-            "State machine quiz flow",
-            "Real-time WebSocket",
-            "DiceBear avatars",
-            "Leaderboard tracking",
-        ],
     }
 
 
 @app.get("/health")
 async def health():
-    """Health check endpoint"""
     status = {"status": "healthy", "services": {}}
     try:
         await db.command("ping")
@@ -596,12 +619,10 @@ async def health():
 
 @app.post("/api/admin/quiz", response_model=Quiz)
 async def create_quiz(data: QuizCreate):
-    """Create a new quiz"""
     try:
         if not data.questions or len(data.questions) > 100:
             raise HTTPException(400, "Must have 1-100 questions")
 
-        # Generate unique code
         code = generate_code()
         for _ in range(10):
             existing = await db.quizzes.find_one({"code": code})
@@ -630,7 +651,6 @@ async def create_quiz(data: QuizCreate):
 
         await db.quizzes.insert_one(quiz_doc)
 
-        # Insert questions
         questions = []
         for idx, q in enumerate(data.questions):
             questions.append(
@@ -666,7 +686,6 @@ async def get_quizzes(
     limit: int = Query(100, le=500),
     skip: int = Query(0, ge=0),
 ):
-    """Get list of quizzes with pagination"""
     try:
         query = {}
         if status:
@@ -687,7 +706,6 @@ async def get_quizzes(
 
 @app.get("/api/admin/quiz/{code}")
 async def get_quiz(code: str):
-    """Get quiz details with questions"""
     try:
         quiz = await db.quizzes.find_one({"code": code}, {"_id": 0})
         if not quiz:
@@ -709,7 +727,6 @@ async def get_quiz(code: str):
 
 @app.patch("/api/admin/quiz/{code}/status")
 async def update_quiz_status(code: str, status: str = Query(...)):
-    """Update quiz status with proper cleanup"""
     try:
         if status not in ["active", "inactive", "ended"]:
             raise HTTPException(400, "Invalid status")
@@ -721,20 +738,14 @@ async def update_quiz_status(code: str, status: str = Query(...)):
         if result.matched_count == 0:
             raise HTTPException(404, "Quiz not found")
 
-        # Handle ended status
         if status == "ended" and manager:
             manager.set_state(code, QuizState.ENDED)
-
-            # Broadcast end message
             await manager.broadcast(
                 code,
-                {"type": "quiz_ended", "message": "Quiz has been terminated by admin"},
+                {"type": "quiz_ended", "message": "Quiz terminated by admin"},
             )
-
-            # Close all connections
             await manager.close_room(code)
 
-        # Broadcast status change
         if manager:
             await manager.broadcast(
                 code, {"type": "quiz_status_changed", "status": status}
@@ -752,13 +763,11 @@ async def update_quiz_status(code: str, status: str = Query(...)):
 
 @app.delete("/api/admin/quiz/{code}")
 async def delete_quiz(code: str):
-    """Delete quiz and all related data"""
     try:
         result = await db.quizzes.delete_one({"code": code})
         if result.deleted_count == 0:
             raise HTTPException(404, "Quiz not found")
 
-        # Delete related data
         await db.questions.delete_many({"quizCode": code})
         await db.participants.delete_many({"quizCode": code})
 
@@ -774,7 +783,6 @@ async def delete_quiz(code: str):
 
 @app.get("/api/admin/quiz/{code}/participants")
 async def get_quiz_participants(code: str):
-    """Get all participants for a quiz"""
     try:
         parts = (
             await db.participants.find({"quizCode": code}, {"_id": 0})
@@ -787,51 +795,49 @@ async def get_quiz_participants(code: str):
         raise HTTPException(500, "Failed to fetch participants")
 
 
-@app.post("/api/avatar/unique", response_model=AvatarResponse)
-async def get_unique_avatar(data: AvatarRequest):
-    """Generate unique avatar for participant"""
+@app.post("/api/avatar/unique")
+async def get_unique_avatar(data: dict):
     try:
-        seed = await generate_unique_avatar(data.quizCode, data.participantId)
+        seed = await generate_unique_avatar(data["quizCode"], data.get("participantId"))
         dicebear_url = f"https://api.dicebear.com/7.x/adventurer/svg?seed={seed}"
-        return AvatarResponse(seed=seed, url=dicebear_url)
+        return {"seed": seed, "url": dicebear_url}
     except Exception as e:
         logger.error(f"Generate unique avatar error: {e}")
         raise HTTPException(500, "Failed to generate unique avatar")
 
 
 @app.post("/api/avatar/reroll")
-async def reroll_avatar(data: AvatarRequest):
-    """Reroll avatar (lobby only)"""
+async def reroll_avatar(data: dict):
     try:
-        participant = await verify_participant(data.participantId, data.quizCode)
+        participant = await verify_participant(data["participantId"], data["quizCode"])
         if not participant:
             raise HTTPException(403, "Unauthorized")
 
-        # Only allow in lobby
-        if manager and manager.get_state(data.quizCode) != QuizState.LOBBY:
+        if manager and manager.get_state(data["quizCode"]) != QuizState.LOBBY:
             raise HTTPException(400, "Cannot change avatar after quiz starts")
 
-        new_seed = await generate_unique_avatar(data.quizCode, data.participantId)
+        new_seed = await generate_unique_avatar(data["quizCode"], data["participantId"])
 
         await db.participants.update_one(
-            {"id": data.participantId}, {"$set": {"avatarSeed": new_seed}}
+            {"id": data["participantId"]}, {"$set": {"avatarSeed": new_seed}}
         )
 
-        # Broadcast update
         if manager:
             await manager.broadcast(
-                data.quizCode,
+                data["quizCode"],
                 {
                     "type": "avatar_updated",
-                    "participantId": data.participantId,
+                    "participantId": data["participantId"],
                     "avatarSeed": new_seed,
                 },
             )
 
         dicebear_url = f"https://api.dicebear.com/7.x/adventurer/svg?seed={new_seed}"
 
-        logger.info(f"✓ Avatar rerolled for {data.participantId} in {data.quizCode}")
-        return AvatarResponse(seed=new_seed, url=dicebear_url)
+        logger.info(
+            f"✓ Avatar rerolled for {data['participantId']} in {data['quizCode']}"
+        )
+        return {"seed": new_seed, "url": dicebear_url}
 
     except HTTPException:
         raise
@@ -842,37 +848,30 @@ async def reroll_avatar(data: AvatarRequest):
 
 @app.post("/api/join", response_model=Participant)
 async def join_quiz(data: ParticipantJoin):
-    """Join a quiz as participant"""
     try:
-        # Validate name
         if not data.name or not data.name.strip():
             raise HTTPException(400, "Name is required")
 
         if len(data.name) > 50:
-            raise HTTPException(400, "Name is too long (max 50 characters)")
+            raise HTTPException(400, "Name too long (max 50 characters)")
 
-        # Check quiz exists and status
         quiz = await db.quizzes.find_one({"code": data.quizCode})
         if not quiz:
             raise HTTPException(404, "Quiz not found")
 
         if quiz.get("status") == "ended":
-            raise HTTPException(
-                400, "Quiz has ended and is no longer accepting participants"
-            )
+            raise HTTPException(400, "Quiz has ended")
 
         if quiz.get("status") != "active":
             raise HTTPException(400, f"Quiz is {quiz.get('status')}")
 
-        # Check attempt limit
         existing_count = await db.participants.count_documents(
             {"quizCode": data.quizCode, "name": data.name.strip()}
         )
 
         if existing_count >= quiz.get("allowedAttempts", 1):
-            raise HTTPException(400, "Maximum attempts reached for this name")
+            raise HTTPException(400, "Maximum attempts reached")
 
-        # Generate or validate avatar
         avatar_seed = data.avatarSeed
         if not avatar_seed:
             avatar_seed = await generate_unique_avatar(data.quizCode)
@@ -880,7 +879,6 @@ async def join_quiz(data: ParticipantJoin):
             if not await is_avatar_unique(data.quizCode, avatar_seed):
                 avatar_seed = await generate_unique_avatar(data.quizCode)
 
-        # Create participant
         pid = str(uuid.uuid4())
         pdoc = {
             "id": pid,
@@ -899,7 +897,6 @@ async def join_quiz(data: ParticipantJoin):
 
         await db.participants.insert_one(pdoc)
 
-        # Update quiz stats
         await db.quizzes.update_one(
             {"code": data.quizCode},
             {
@@ -920,7 +917,6 @@ async def join_quiz(data: ParticipantJoin):
 
 @app.get("/api/quiz/{code}/questions")
 async def get_quiz_questions(code: str, participantId: str):
-    """Get quiz questions (filtered for participants)"""
     try:
         quiz = await db.quizzes.find_one({"code": code})
         if not quiz:
@@ -929,13 +925,11 @@ async def get_quiz_questions(code: str, participantId: str):
         if quiz.get("status") == "ended":
             raise HTTPException(400, "Quiz has ended")
 
-        # Verify participant (except admin)
         if participantId != "admin":
             p = await verify_participant(participantId, code)
             if not p:
                 raise HTTPException(403, "Unauthorized")
 
-        # Set projection (hide correct answers from participants)
         projection = {"_id": 0}
         if participantId != "admin":
             projection["correctAnswer"] = 0
@@ -946,7 +940,6 @@ async def get_quiz_questions(code: str, participantId: str):
             .to_list(100)
         )
 
-        # Shuffle if enabled (for participants only)
         if participantId != "admin":
             if quiz and quiz.get("shuffleQuestions"):
                 random.shuffle(questions)
@@ -962,64 +955,56 @@ async def get_quiz_questions(code: str, participantId: str):
 
 @app.post("/api/submit-answer")
 async def submit_answer(ans: AnswerSubmit):
-    """Submit answer with state validation"""
     try:
-        # Check quiz status
         quiz = await db.quizzes.find_one({"code": ans.quizCode})
         if not quiz:
             raise HTTPException(404, "Quiz not found")
 
         if quiz.get("status") == "ended":
-            raise HTTPException(400, "Quiz has ended, answers no longer accepted")
+            raise HTTPException(400, "Quiz has ended")
 
-        # Verify participant
         p = await verify_participant(ans.participantId, ans.quizCode)
         if not p:
             raise HTTPException(403, "Unauthorized")
 
-        # Verify state machine
         if manager:
             current_state = manager.get_state(ans.quizCode)
-            if current_state == QuizState.ENDED:
-                raise HTTPException(400, "Quiz session has ended")
-
-            if current_state != QuizState.QUESTION:
-                # silently ignore late submissions
+            if current_state in [QuizState.ENDED, QuizState.PODIUM]:
                 return {
                     "correct": False,
                     "points": 0,
                     "basePoints": 0,
                     "timeBonus": 0,
                     "ignored": True,
+                    "reason": "Quiz has ended",
                 }
 
-
-            # Verify question index
-            backend_question = manager.get_question(ans.quizCode)
-            if ans.questionIndex != backend_question:
-                return {
-                    "correct": False,
-                    "points": 0,
-                    "basePoints": 0,
-                    "timeBonus": 0,
-                    "ignored": True,
-                }
-
-
-        # Get question
         q = await db.questions.find_one(
             {"quizCode": ans.quizCode, "index": ans.questionIndex}, {"_id": 0}
         )
 
         if not q:
-            raise HTTPException(404, "Question not found")
+            raise HTTPException(404, f"Question {ans.questionIndex} not found")
 
-        # Check if already answered
-        for existing_ans in p.get("answers", []):
+        existing_answers = p.get("answers", [])
+        for existing_ans in existing_answers:
             if existing_ans.get("questionIndex") == ans.questionIndex:
-                raise HTTPException(400, "Question already answered")
+                logger.warning(f"Duplicate answer for Q{ans.questionIndex}")
+                return {
+                    "correct": existing_ans.get("isCorrect", False),
+                    "points": existing_ans.get("points", 0),
+                    "basePoints": existing_ans.get("basePoints", 0),
+                    "timeBonus": existing_ans.get("timeBonus", 0),
+                    "streakBonus": existing_ans.get("streakBonus", 0),
+                    "correctAnswer": (
+                        q.get("correctAnswer")
+                        if quiz.get("showCorrectAnswers")
+                        else None
+                    ),
+                    "alreadyAnswered": True,
+                    "message": "Already answered",
+                }
 
-        # Calculate correctness
         is_correct = False
         correct_answer = q.get("correctAnswer")
 
@@ -1028,25 +1013,26 @@ async def submit_answer(ans: AnswerSubmit):
         else:
             is_correct = correct_answer == ans.selectedOption
 
-        # Calculate points
-        base_pts, time_bonus = calc_points(q, is_correct, ans.timeTaken)
-        total_pts = base_pts + time_bonus
+        base_pts, time_bonus, streak_bonus = calc_points_v2(
+            q, is_correct, ans.timeTaken, p.get("answers", [])
+        )
+        total_pts = base_pts + time_bonus + streak_bonus
 
-        # Create answer record
         ans_rec = {
             "questionIndex": ans.questionIndex,
             "selectedOption": ans.selectedOption,
             "isCorrect": is_correct,
             "timeTaken": round(ans.timeTaken, 2),
             "points": total_pts,
+            "basePoints": base_pts,
+            "timeBonus": time_bonus,
+            "streakBonus": streak_bonus,
             "submittedAt": datetime.now(timezone.utc).isoformat(),
         }
 
-        # Check completion
         q_count = await db.questions.count_documents({"quizCode": ans.quizCode})
-        is_completed = ans.questionIndex + 1 >= q_count
+        is_completed = len(p.get("answers", [])) + 1 >= q_count
 
-        # Update participant
         update_doc = {
             "$inc": {"score": total_pts, "totalTime": ans.timeTaken},
             "$push": {"answers": ans_rec},
@@ -1060,7 +1046,6 @@ async def submit_answer(ans: AnswerSubmit):
 
         await db.participants.update_one({"id": ans.participantId}, update_doc)
 
-        # Update connection manager
         if manager:
             manager.mark_answered(ans.quizCode, ans.participantId)
             answered, total = manager.get_answer_count(ans.quizCode)
@@ -1074,17 +1059,21 @@ async def submit_answer(ans: AnswerSubmit):
                 },
             )
 
-        # Prepare result
         result = {
             "correct": is_correct,
             "points": total_pts,
             "basePoints": base_pts,
             "timeBonus": time_bonus,
+            "streakBonus": streak_bonus,
             "isCompleted": is_completed,
         }
 
         if quiz and quiz.get("showCorrectAnswers"):
             result["correctAnswer"] = correct_answer
+
+        logger.info(
+            f"✓ Answer: {ans.participantId} Q{ans.questionIndex} -> {is_correct} ({total_pts}pts)"
+        )
 
         return result
 
@@ -1097,7 +1086,6 @@ async def submit_answer(ans: AnswerSubmit):
 
 @app.get("/api/leaderboard/{code}", response_model=List[LeaderboardEntry])
 async def get_leaderboard(code: str):
-    """Get current leaderboard"""
     try:
         return await calc_leaderboard(code)
     except Exception as e:
@@ -1107,7 +1095,6 @@ async def get_leaderboard(code: str):
 
 @app.get("/api/quiz/{code}/final-results")
 async def get_final_results(code: str):
-    """Get final quiz results with stats"""
     try:
         leaderboard = await calc_leaderboard(code)
         total_q = await db.questions.count_documents({"quizCode": code})
@@ -1134,17 +1121,15 @@ async def get_final_results(code: str):
 
 
 # ============================================================================
-# WEBSOCKET ENDPOINT WITH STATE MACHINE
+# WEBSOCKET WITH FIXED STATE MACHINE
 # ============================================================================
 
 
 @app.websocket("/ws/{quiz_code}")
 async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
-    """WebSocket endpoint with full state machine control"""
     user_id = None
     is_admin = False
 
-    # Check if quiz exists and is not ended
     quiz = await db.quizzes.find_one({"code": quiz_code})
     if quiz and quiz.get("status") == "ended":
         await websocket.close(code=1008, reason="Quiz has ended")
@@ -1161,21 +1146,18 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                 msg = json.loads(data)
                 msg_type = msg.get("type")
 
-                # ADMIN JOINED
                 if msg_type == "admin_joined":
                     is_admin = True
                     user_id = f"admin_{quiz_code}"
                     manager.set_admin(quiz_code, websocket)
 
-                    # Get question count
                     q_count = await db.questions.count_documents(
                         {"quizCode": quiz_code}
                     )
-                    manager.room_state[quiz_code]["total_questions"] = q_count
+                    manager.set_total_questions(quiz_code, q_count)
 
                     logger.info(f"✓ Admin joined: {quiz_code}")
 
-                    # Send current state
                     parts = await db.participants.find(
                         {"quizCode": quiz_code}, {"_id": 0}
                     ).to_list(config.MAX_PARTICIPANTS)
@@ -1183,17 +1165,18 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                     for p in parts:
                         manager.add_participant(quiz_code, p)
 
+                    room_state = manager.get_room_state(quiz_code)
+
                     await websocket.send_json(
                         {
                             "type": "all_participants",
                             "participants": parts,
-                            "quiz_state": manager.get_state(quiz_code),
-                            "current_question": manager.get_question(quiz_code),
-                            "total_questions": q_count,
+                            "quiz_state": room_state["quiz_state"],
+                            "current_question": room_state["current_question"],
+                            "total_questions": room_state["total_questions"],
                         }
                     )
 
-                # PARTICIPANT JOINED
                 elif msg_type == "participant_joined":
                     participant_id = msg.get("participantId")
                     if participant_id:
@@ -1204,6 +1187,19 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
 
                         if p:
                             manager.add_participant(quiz_code, p)
+
+                            # Send current state to rejoining participant
+                            room_state = manager.get_room_state(quiz_code)
+
+                            await websocket.send_json(
+                                {
+                                    "type": "sync_state",
+                                    "quiz_state": room_state["quiz_state"],
+                                    "current_question": room_state["current_question"],
+                                    "total_questions": room_state["total_questions"],
+                                    "show_answers": room_state["show_answers"],
+                                }
+                            )
 
                             await manager.broadcast(
                                 quiz_code,
@@ -1219,7 +1215,6 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
 
                             logger.info(f"✓ Participant {p['name']} joined {quiz_code}")
 
-                # QUIZ STARTING
                 elif msg_type == "quiz_starting":
                     if is_admin:
                         manager.set_state(quiz_code, QuizState.QUESTION)
@@ -1234,49 +1229,35 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                             },
                         )
                         logger.info(f"✓ Quiz starting: {quiz_code}")
-                
+
                 elif msg_type == "auto_submit":
                     participant_id = msg.get("participantId")
-                    question_index = msg.get("questionIndex")
+                    if participant_id:
+                        manager.mark_answered(quiz_code, participant_id)
+                        answered, total = manager.get_answer_count(quiz_code)
 
-                    if not participant_id:
-                        return
+                        await manager.broadcast(
+                            quiz_code,
+                            {
+                                "type": "answer_count",
+                                "answeredCount": answered,
+                                "totalParticipants": total,
+                            },
+                        )
 
-                    if manager.get_state(quiz_code) != QuizState.QUESTION:
-                        return
-
-                    if question_index != manager.get_question(quiz_code):
-                        return
-
-                    manager.mark_answered(quiz_code, participant_id)
-
-                    answered, total = manager.get_answer_count(quiz_code)
-
-                    await manager.broadcast(
-                        quiz_code,
-                        {
-                            "type": "answer_count",
-                            "answeredCount": answered,
-                            "totalParticipants": total,
-                        },
-                    )
-
-                # ANSWER SUBMITTED
-                
-
-                # SHOW ANSWER
                 elif msg_type == "show_answer":
                     if is_admin:
+                        manager.set_state(quiz_code, QuizState.ANSWER_REVEAL)
+                        manager.set_show_answers(quiz_code, True)
+
                         await manager.broadcast(quiz_code, {"type": "show_answer"})
                         logger.info(f"✓ Showing answers: {quiz_code}")
 
-                # SHOW LEADERBOARD
                 elif msg_type == "show_leaderboard":
                     if is_admin:
                         current_q = manager.get_question(quiz_code)
                         total_q = manager.room_state[quiz_code]["total_questions"]
 
-                        # Determine if final leaderboard
                         if current_q >= total_q - 1:
                             manager.set_state(quiz_code, QuizState.FINAL_LEADERBOARD)
                         else:
@@ -1293,7 +1274,6 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                         )
                         logger.info(f"✓ Showing leaderboard: {quiz_code}")
 
-                # NEXT QUESTION
                 elif msg_type == "next_question":
                     if is_admin:
                         current_q = manager.get_question(quiz_code)
@@ -1301,7 +1281,6 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                         next_q = current_q + 1
 
                         if next_q < total_q:
-                            # Next question
                             manager.set_question(quiz_code, next_q)
                             manager.clear_answers(quiz_code)
                             manager.set_state(quiz_code, QuizState.QUESTION)
@@ -1317,7 +1296,6 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                             )
                             logger.info(f"✓ Next question {next_q}: {quiz_code}")
                         else:
-                            # Show podium
                             manager.set_state(quiz_code, QuizState.PODIUM)
                             await manager.broadcast(
                                 quiz_code,
@@ -1328,14 +1306,12 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                             )
                             logger.info(f"✓ Showing podium: {quiz_code}")
 
-                # PING/PONG
                 elif msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
                 elif msg_type == "pong":
                     pass
 
             except asyncio.TimeoutError:
-                # Send ping on timeout
                 await websocket.send_json({"type": "ping"})
 
     except WebSocketDisconnect:
@@ -1346,15 +1322,11 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
         manager.disconnect(websocket, quiz_code, user_id)
 
 
-# ============================================================================
-# MAIN
-# ============================================================================
-
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "server:app",
+        "backend_fixed:app",
         host="0.0.0.0",
         port=int(os.getenv("PORT", 8000)),
         reload=True,
