@@ -8,6 +8,7 @@ import confetti from 'canvas-confetti';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import DicebearAvatar from '@/components/ui/avatar/DicebearAvatar';
+import { useSocket } from '../context/SocketContext';
 import {
   Dialog,
   DialogContent,
@@ -28,9 +29,46 @@ const FinalPodium = () => {
   const [showStatsDialog, setShowStatsDialog] = useState(false);
   const [fullLeaderboard, setFullLeaderboard] = useState([]);
 
+  const participantId = localStorage.getItem('participantId');
+  const isAdmin = localStorage.getItem('isAdmin') === 'true';
+  const myResult = fullLeaderboard.find(r => r.participantId === participantId);
+
+  const { socket, isConnected, connect, addListener } = useSocket();
+
+  // Connect WebSocket for live events
+  useEffect(() => {
+    if (!isConnected) connect(code, participantId || null, isAdmin);
+  }, [isConnected, code, participantId, isAdmin, connect]);
+
+  // Listen for quiz_ended and participant_kicked
+  useEffect(() => {
+    if (!socket) return;
+
+    const off1 = addListener('quiz_ended', () => {
+      toast.info('📢 Quiz has been ended');
+      if (isAdmin) {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
+    });
+
+    const off2 = addListener('participant_kicked', (d) => {
+      if (!isAdmin && d.participantId === participantId) {
+        localStorage.removeItem('participantId');
+        localStorage.removeItem('participantName');
+        toast.error('You have been removed from this quiz by the host');
+        navigate('/');
+      }
+    });
+
+    return () => { off1(); off2(); };
+  }, [socket, addListener, navigate, isAdmin, participantId, code]);
+
   useEffect(() => {
     fetchResults();
     setTimeout(() => triggerMassiveConfetti(), 1000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchResults = async () => {
@@ -82,7 +120,10 @@ const FinalPodium = () => {
 
   const handleEndQuiz = async () => {
     try {
-      await axios.patch(`${API}/admin/quiz/${code}/status?status=ended`);
+      const token = localStorage.getItem('adminToken');
+      await axios.patch(`${API}/admin/quiz/${code}/status?status=ended`, null, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       toast.success('Quiz ended successfully');
       navigate('/admin');
     } catch (error) {
@@ -200,7 +241,13 @@ const FinalPodium = () => {
                       />
                     </motion.div>
 
-                    <div className="w-full bg-gradient-to-b from-gray-300 to-gray-500 rounded-t-2xl md:rounded-t-3xl p-3 md:p-8 shadow-2xl h-40 md:h-64">
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      transition={{ delay: 0.8, duration: 0.8, type: 'spring' }}
+                      className="w-full bg-gradient-to-b from-gray-300 to-gray-500 rounded-t-2xl md:rounded-t-3xl p-3 md:p-8 shadow-2xl overflow-hidden"
+                      style={{ minHeight: '160px' }}
+                    >
                       <div className="text-center">
                         <div className="text-5xl md:text-9xl font-black text-white mb-1 md:mb-3">2</div>
                         <h3 className="text-base md:text-3xl font-bold text-white mb-1 md:mb-3 truncate">
@@ -215,7 +262,7 @@ const FinalPodium = () => {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   </motion.div>
                 )}
 
@@ -261,7 +308,13 @@ const FinalPodium = () => {
                       </motion.div>
                     </motion.div>
 
-                    <div className="w-full bg-gradient-to-b from-yellow-400 to-orange-600 rounded-t-2xl md:rounded-t-3xl p-4 md:p-8 shadow-2xl h-48 md:h-80 relative overflow-hidden">
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      transition={{ delay: 0.5, duration: 1, type: 'spring' }}
+                      className="w-full bg-gradient-to-b from-yellow-400 to-orange-600 rounded-t-2xl md:rounded-t-3xl p-4 md:p-8 shadow-2xl relative overflow-hidden"
+                      style={{ minHeight: '192px' }}
+                    >
                       <motion.div
                         animate={{ x: ['-100%', '200%'] }}
                         transition={{ duration: 2, repeat: Infinity, repeatDelay: 1 }}
@@ -289,7 +342,7 @@ const FinalPodium = () => {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   </motion.div>
                 )}
 
@@ -313,7 +366,13 @@ const FinalPodium = () => {
                       />
                     </motion.div>
 
-                    <div className="w-full bg-gradient-to-b from-orange-400 to-orange-600 rounded-t-2xl md:rounded-t-3xl p-3 md:p-8 shadow-2xl h-32 md:h-56">
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      transition={{ delay: 1.0, duration: 0.7, type: 'spring' }}
+                      className="w-full bg-gradient-to-b from-orange-400 to-orange-600 rounded-t-2xl md:rounded-t-3xl p-3 md:p-8 shadow-2xl overflow-hidden"
+                      style={{ minHeight: '128px' }}
+                    >
                       <div className="text-center">
                         <div className="text-5xl md:text-9xl font-black text-white mb-1 md:mb-3">3</div>
                         <h3 className="text-base md:text-3xl font-bold text-white mb-1 md:mb-3 truncate">
@@ -328,10 +387,22 @@ const FinalPodium = () => {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   </motion.div>
                 )}
               </div>
+            </motion.div>
+          )}
+
+          {participantId && !localStorage.getItem('isAdmin') && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.5 }}
+              className="text-center mb-8 text-white/80">
+              {myResult ? (
+                <p className="text-xl md:text-2xl font-semibold">You finished <span className="text-yellow-400 font-black text-2xl md:text-4xl px-2">#{myResult.rank}</span> with {myResult.score} points</p>
+              ) : null}
             </motion.div>
           )}
 
@@ -361,15 +432,39 @@ const FinalPodium = () => {
               Back to Home
             </Button>
 
+            {localStorage.getItem('participantId') && !localStorage.getItem('isAdmin') && (
+              <Button
+                onClick={() => navigate(`/results/${code}/${localStorage.getItem('participantId')}`)}
+                size="lg"
+                className="bg-blue-500 text-white hover:bg-blue-600 font-black text-lg md:text-2xl px-8 md:px-12 py-6 md:py-8 rounded-full shadow-2xl flex items-center gap-2 md:gap-4"
+                style={{ fontFamily: "'Fredoka', sans-serif" }}
+              >
+                <BarChart3 className="w-6 h-6 md:w-8 md:h-8" />
+                View My Stats
+              </Button>
+            )}
+
             <Button
-              onClick={handleEndQuiz}
+              onClick={() => navigate(`/leaderboard/${code}?qnum=999&total=999&final=1`)}
               size="lg"
-              className="bg-red-600 text-white hover:bg-red-700 font-black text-lg md:text-2xl px-8 md:px-12 py-6 md:py-8 rounded-full shadow-2xl flex items-center gap-2 md:gap-4"
+              className="bg-indigo-600 text-white hover:bg-indigo-700 font-black text-lg md:text-2xl px-8 md:px-12 py-6 md:py-8 rounded-full shadow-2xl flex items-center gap-2 md:gap-4"
               style={{ fontFamily: "'Fredoka', sans-serif" }}
             >
-              <XCircle className="w-6 h-6 md:w-8 md:h-8" />
-              End Quiz
+              <Trophy className="w-6 h-6 md:w-8 md:h-8" />
+              View Full Leaderboard
             </Button>
+
+            {localStorage.getItem('isAdmin') === 'true' && (
+              <Button
+                onClick={handleEndQuiz}
+                size="lg"
+                className="bg-red-600 text-white hover:bg-red-700 font-black text-lg md:text-2xl px-8 md:px-12 py-6 md:py-8 rounded-full shadow-2xl flex items-center gap-2 md:gap-4"
+                style={{ fontFamily: "'Fredoka', sans-serif" }}
+              >
+                <XCircle className="w-6 h-6 md:w-8 md:h-8" />
+                End Quiz
+              </Button>
+            )}
           </motion.div>
         </div>
       </div>

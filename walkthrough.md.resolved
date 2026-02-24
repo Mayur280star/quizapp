@@ -1,0 +1,82 @@
+# Quiz Arena — Bug Fix Walkthrough
+
+## Core Problem: Quiz Stuck on Question 1
+
+The quiz would never advance past Q1 for both admin and players. Here's the root cause chain:
+
+```mermaid
+sequenceDiagram
+    participant Admin as Admin (Leaderboard)
+    participant Server
+    participant QuizPlay as QuizPlay.js (re-mounts)
+    
+    Admin->>Server: send("next_question")
+    Server->>Server: Advance to Q2, broadcast
+    Note over QuizPlay: ❌ Not mounted yet!
+    Server-->>Admin: next_question (missed!)
+    Admin->>QuizPlay: navigate("/quiz/CODE")
+    QuizPlay->>QuizPlay: Mount fresh → state = Q0
+    Note over QuizPlay: ❌ Never receives Q2 data
+    QuizPlay->>QuizPlay: Shows Q1 from local array
+```
+
+## Fixes Applied
+
+### Fix 1: Mount-time State Sync ([QuizPlay.js](file:///f:/newworldbegins/quizapp/frontend/src/pages/QuizPlay.js))
+
+When QuizPlay re-mounts after navigating back from leaderboard, it now explicitly requests state sync:
+
+```javascript
+useEffect(() => {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    send({ type: 'request_state_sync' });
+  }
+}, [socket]);
+```
+
+### Fix 2: Server Sends Question Data in sync_state ([server.py](file:///f:/newworldbegins/quizapp/backend/server.py))
+
+Changed `current_question_data` → [question](file:///f:/newworldbegins/quizapp/backend/server.py#414-418) for field name consistency with `quiz_starting` and `next_question` broadcasts.
+
+### Fix 3: sync_state Handler Rewrite ([QuizPlay.js](file:///f:/newworldbegins/quizapp/frontend/src/pages/QuizPlay.js))
+
+| Before | After |
+|--------|-------|
+| `answer_reveal` state → redirected to leaderboard ❌ | Shows answer reveal in place ✅ |
+| Didn't set `currentQuestionData` | Sets `currentQuestionData` from `d.question` ✅ |
+| Called `resetQuestionState()` (clears everything) | Individually resets each state for safety ✅ |
+
+### Fix 4: Question Display Uses Server Data
+
+```diff
+-const currentQuestion = questions[currentQuestionIndex];
++const currentQuestion = currentQuestionData || questions[currentQuestionIndex];
+```
+
+### Fix 5: Admin-Only End Quiz Button ([FinalPodium.js](file:///f:/newworldbegins/quizapp/frontend/src/pages/FinalPodium.js))
+
+Added `isAdmin` guard + "View Full Leaderboard" button.
+
+### Fix 6: 5-Second Countdown + Timer ([server.py](file:///f:/newworldbegins/quizapp/backend/server.py), [QuizPlay.js](file:///f:/newworldbegins/quizapp/frontend/src/pages/QuizPlay.js))
+
+- [handle_start_quiz](file:///f:/newworldbegins/quizapp/backend/server.py#1573-1637) background task with countdown broadcasts
+- `startTimer(duration)` accepts seconds directly from `time_limit`
+- [getTimeLimit()](file:///f:/newworldbegins/quizapp/frontend/src/pages/QuizPlay.js#92-102) 4-level fallback: `data.time_limit → data.timeLimit → data.question.time_limit → 20`
+
+## Build Verification
+
+```
+✅ npx craco build — exit code 0
+   202.02 kB  build/static/js/main.dbc589bf.js
+   14.56 kB   build/static/css/main.25143c88.css
+```
+
+![Admin dashboard](file:///C:/Users/DELL/.gemini/antigravity/brain/58444150-503e-4ef5-a7ce-48f9b2e16609/.system_generated/click_feedback/click_feedback_1771870118721.png)
+
+## Test Flow
+
+1. Admin starts quiz → 5-sec countdown appears → Q1 displays with timer
+2. Admin shows answer → answer reveal (no redirect)
+3. Admin shows leaderboard → navigates to leaderboard with correct Q number
+4. Admin clicks "Next Question" → server advances to Q2 → broadcasts `next_question`
+5. Both admin & players navigate to `/quiz/CODE` → QuizPlay mounts → sends `request_state_sync` → gets Q2 data + timer

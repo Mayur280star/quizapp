@@ -7,12 +7,14 @@ import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
 import {
   Users, Play, Crown, Sparkles, Copy, QrCode, Share2,
-  Volume2, VolumeX, LogOut, Trophy, Shuffle
+  Volume2, VolumeX, LogOut, Trophy, Shuffle, UserX
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import DicebearAvatar from '@/components/ui/avatar/DicebearAvatar';
-import { saveAvatarSeed, generateRandomSeed } from '@/utils/avatar';
+import { saveAvatarSeed } from '@/utils/avatar';
+import { useSocket } from '../context/SocketContext';
+import { bgMusic } from '@/utils/bgMusic';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
@@ -23,13 +25,11 @@ const QuizLobby = () => {
   
   const [quiz, setQuiz] = useState(null);
   const [participants, setParticipants] = useState([]);
-  const wsRef = useRef(null);
-  
+  const { socket, isConnected, connect, send, addListener, disconnect } = useSocket();
   const [loading, setLoading] = useState(true);
   const [countdown, setCountdown] = useState(null);
   const [showQR, setShowQR] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [wsConnected, setWsConnected] = useState(false);
   const [rerolling, setRerolling] = useState(false);
   
   const isAdmin = localStorage.getItem('isAdmin') === 'true';
@@ -103,7 +103,15 @@ const QuizLobby = () => {
 
   const fetchQuizDetails = useCallback(async () => {
     try {
-      const response = await axios.get(`${API}/admin/quiz/${code}`);
+      let response;
+      if (isAdmin) {
+        const token = localStorage.getItem('adminToken');
+        response = await axios.get(`${API}/admin/quiz/${code}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } else {
+        response = await axios.get(`${API}/quiz/${code}/info`);
+      }
       setQuiz(response.data);
       setLoading(false);
     } catch (error) {
@@ -115,108 +123,122 @@ const QuizLobby = () => {
 
   const fetchParticipants = useCallback(async () => {
     try {
-      const response = await axios.get(`${API}/admin/quiz/${code}/participants`);
+      let response;
+      if (isAdmin) {
+        const token = localStorage.getItem('adminToken');
+        response = await axios.get(`${API}/admin/quiz/${code}/participants`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } else {
+        response = await axios.get(`${API}/quiz/${code}/participants/public`);
+      }
       if (response.data.participants) {
         setParticipants(response.data.participants);
       }
     } catch (error) {
       console.error('Fetch participants error:', error);
     }
-  }, [code]);
+  }, [code, isAdmin]);
 
-  const connectWebSocket = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      return;
+  useEffect(() => {
+    if (!isConnected) {
+      connect(code, participantId, isAdmin, participantName, avatarSeed);
     }
+  }, [isConnected, code, participantId, isAdmin, connect, participantName, avatarSeed]);
 
-    const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
-    const socket = new WebSocket(`${wsUrl}/ws/${code}`);
-    wsRef.current = socket;
+  // Start lobby music
+  useEffect(() => {
+    bgMusic.startLobby();
+    return () => bgMusic.stop();
+  }, []);
 
-    socket.onopen = () => {
-      console.log('✓ Lobby WebSocket connected');
-      setWsConnected(true);
-
-      if (isAdmin) {
-        socket.send(JSON.stringify({
-          type: 'admin_joined',
-          code
-        }));
-      } else if (participantId) {
-        socket.send(JSON.stringify({
-          type: 'participant_joined',
-          participantId,
-          name: participantName,
-          avatarSeed,
-          code
-        }));
-      }
-    };
-
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      switch (data.type) {
-        case 'participant_joined':
-          setParticipants(prev => {
-            const exists = prev.find(p => p.id === data.participant.id);
-            if (!exists) {
-              confetti({
-                particleCount: 30,
-                spread: 40,
-                origin: { x: Math.random(), y: 0.6 }
-              });
-              toast.success(`${data.participant.name} joined! 🎉`);
-              return [...prev, data.participant];
-            }
-            return prev;
-          });
-          break;
-
-        case 'all_participants':
-          setParticipants(data.participants || []);
-          break;
-
-        case 'avatar_updated':
-          setParticipants(prev => prev.map(p => 
-            p.id === data.participantId 
-              ? { ...p, avatarSeed: data.avatarSeed }
-              : p
-          ));
-          break;
-
-        case 'quiz_starting':
-          setCountdown(5);
+  useEffect(() => {
+    if (!socket) return;
+    
+    const cleanupParticipantJoined = addListener('participant_joined', (data) => {
+      setParticipants(prev => {
+        const exists = prev.find(p => p.id === data.participant.id);
+        if (!exists) {
           confetti({
-            particleCount: 100,
-            spread: 70,
-            origin: { y: 0.6 }
+            particleCount: 30,
+            spread: 40,
+            origin: { x: Math.random(), y: 0.6 }
           });
-          break;
+          toast.success(`${data.participant.name} joined! 🎉`);
+          return [...prev, data.participant];
+        }
+        return prev;
+      });
+    });
 
-        case 'ping':
-          socket.send(JSON.stringify({ type: 'pong' }));
-          break;
+    const cleanupAllParticipants = addListener('all_participants', (data) => {
+      setParticipants(data.participants || []);
+    });
 
-        default:
-          break;
+    const cleanupAvatarUpdated = addListener('avatar_updated', (data) => {
+      setParticipants(prev => prev.map(p => 
+        p.id === data.participantId 
+          ? { ...p, avatarSeed: data.avatarSeed }
+          : p
+      ));
+    });
+
+    const cleanupQuizStarting = addListener('quiz_starting', () => {
+      // Navigate immediately — server state is already set when broadcast fires
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      navigate(`/quiz/${code}`);
+    });
+
+    // Auto-redirect if quiz is already in progress (late join or reconnect)
+    const cleanupSyncState = addListener('sync_state', (data) => {
+      if (data.quiz_state && data.quiz_state !== 'lobby') {
+        navigate(`/quiz/${code}`);
       }
-    };
+    });
 
-    socket.onerror = (error) => {
-      console.error('Lobby WebSocket error:', error);
-      setWsConnected(false);
-    };
+    const cleanupCountdownStart = addListener('countdown_start', () => {
+      navigate(`/quiz/${code}`);
+    });
 
-    socket.onclose = () => {
-      console.log('Lobby WebSocket disconnected');
-      setWsConnected(false);
-      wsRef.current = null;
-      setTimeout(() => {
-        if (!wsRef.current) connectWebSocket();
-      }, 3000);
+    const cleanupCountdownTick = addListener('countdown_tick', () => {
+      navigate(`/quiz/${code}`);
+    });
+
+    // Quiz ended — redirect
+    const cleanupQuizEnded = addListener('quiz_ended', () => {
+      toast.info('📢 Quiz has been ended');
+      if (isAdmin) {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
+    });
+
+    // Player kicked — remove from list or redirect self
+    const cleanupKicked = addListener('participant_kicked', (data) => {
+      setParticipants(prev => prev.filter(p => p.id !== data.participantId));
+      if (!isAdmin && data.participantId === participantId) {
+        localStorage.removeItem('participantId');
+        localStorage.removeItem('participantName');
+        toast.error('You have been removed from this quiz by the host');
+        navigate('/');
+      } else if (isAdmin) {
+        toast.success(`${data.name} was removed`);
+      }
+    });
+
+    return () => {
+      cleanupParticipantJoined();
+      cleanupAllParticipants();
+      cleanupAvatarUpdated();
+      cleanupQuizStarting();
+      cleanupSyncState();
+      cleanupCountdownStart();
+      cleanupCountdownTick();
+      cleanupQuizEnded();
+      cleanupKicked();
     };
-  }, [code, isAdmin, participantId, participantName, avatarSeed]);
+  }, [socket, addListener]);
 
   useEffect(() => {
     if (!participantId && !isAdmin) {
@@ -227,15 +249,7 @@ const QuizLobby = () => {
 
     fetchQuizDetails();
     fetchParticipants();
-    connectWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [participantId, isAdmin, navigate, fetchQuizDetails, fetchParticipants, connectWebSocket]);
+  }, [participantId, isAdmin, navigate, fetchQuizDetails, fetchParticipants]);
 
   useEffect(() => {
     if (countdown === null) return;
@@ -254,24 +268,29 @@ const QuizLobby = () => {
       return;
     }
 
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'quiz_starting' }));
+    if (socket) {
+      send({ type: 'quiz_starting' });
+      // Navigate immediately — the WS broadcast will fire on the quiz page
+      navigate(`/quiz/${code}`);
     } else {
       toast.error('❌ Connection lost');
     }
   };
 
   const handleLeaveQuiz = () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.close();
-    }
+    disconnect();
     localStorage.removeItem('participantId');
     localStorage.removeItem('participantName');
-    localStorage.removeItem('avatarSeed');
+    // NOTE: intentionally NOT removing avatarSeed so returning players keep the same avatar
     if (isAdmin) {
       localStorage.removeItem('isAdmin');
     }
     navigate('/');
+  };
+
+  const handleKickPlayer = (participant) => {
+    if (!socket) return;
+    send({ type: 'kick_player', participantId: participant.id });
   };
 
   if (loading) {
@@ -335,7 +354,7 @@ const QuizLobby = () => {
               <motion.div
                 animate={{ scale: [1, 1.2, 1] }}
                 transition={{ duration: 2, repeat: Infinity }}
-                className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400' : 'bg-red-400'}`}
+                className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}
               />
             </div>
           </div>
@@ -349,7 +368,10 @@ const QuizLobby = () => {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setIsMuted(!isMuted)}
+            onClick={() => {
+              setIsMuted(!isMuted);
+              bgMusic.setMuted(!isMuted);
+            }}
             className="bg-white/20 border-white/40 text-white hover:bg-white/30 rounded-full h-10 w-10 md:h-12 md:w-12"
           >
             {isMuted ? <VolumeX className="w-4 h-4 md:w-5 md:h-5" /> : <Volume2 className="w-4 h-4 md:w-5 md:h-5" />}
@@ -398,6 +420,17 @@ const QuizLobby = () => {
             {quiz?.description && (
               <p className="text-lg md:text-2xl text-white/90 mb-4 md:mb-6">{quiz.description}</p>
             )}
+
+            {/* EQ Bars — lobby vibe */}
+            <div className="flex items-end justify-center gap-1 h-8 mb-4">
+              {[1,2,3,4,5,6,7].map(i => (
+                <motion.div key={i}
+                  className="w-2 bg-white/40 rounded-full"
+                  animate={{ height: ['20%', '100%', '60%', '80%', '20%'] }}
+                  transition={{ duration: 0.8 + i * 0.1, repeat: Infinity, delay: i * 0.1, ease: 'easeInOut' }}
+                />
+              ))}
+            </div>
 
             {/* Game PIN Card */}
             <motion.div
@@ -563,7 +596,7 @@ const QuizLobby = () => {
                         className="relative"
                       >
                         <div className={`
-                          flex flex-col items-center gap-2 p-2 md:p-3 rounded-2xl transition-all
+                          flex flex-col items-center gap-2 p-2 md:p-3 rounded-2xl transition-all group
                           ${isCurrentPlayer ? 'bg-yellow-400/20 ring-2 md:ring-4 ring-yellow-400 scale-110' : 'bg-white/10'}
                         `}>
                           {index === 0 && (
@@ -596,6 +629,17 @@ const QuizLobby = () => {
                               {isCurrentPlayer && ' (You)'}
                             </p>
                           </div>
+
+                          {/* Kick button for admin - visible on hover */}
+                          {isAdmin && quizNotStarted && !isCurrentPlayer && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleKickPlayer(participant); }}
+                              className="absolute -top-1 -left-1 w-5 h-5 md:w-6 md:h-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
+                              title={`Kick ${participant.name}`}
+                            >
+                              <UserX className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
                       </motion.div>
                     );
@@ -712,7 +756,7 @@ const QuizLobby = () => {
         )}
       </AnimatePresence>
 
-      <style jsx>{`
+      <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
         }

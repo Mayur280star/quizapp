@@ -7,7 +7,7 @@ import {
   Save, ArrowLeft, Settings, Sparkles, Plus, Trash2, Copy,
   Image as ImageIcon, Video, Music, GripVertical,
   Eye, EyeOff, Clock, Award, Target,
-  Check, X
+  Check, X, Share2, Trophy
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,6 +55,10 @@ const POINT_OPTIONS = [
 
 function CreateQuiz() {
   const navigate = useNavigate();
+
+  const authHeader = () => ({
+    headers: { Authorization: `Bearer ${localStorage.getItem('adminToken')}` }
+  });
   
   // Quiz metadata
   const [title, setTitle] = useState('');
@@ -84,6 +88,7 @@ function CreateQuiz() {
   const [showPreview, setShowPreview] = useState(false);
   const [loading, setLoading] = useState(false);
   const [autosave, setAutosave] = useState(true);
+  const [createdQuiz, setCreatedQuiz] = useState(null);
 
   const activeQuestion = questions[activeQuestionIndex];
 
@@ -198,6 +203,16 @@ function CreateQuiz() {
       return;
     }
 
+    // Validate every question has at least one correct answer
+    for (let i = 0; i < questions.length; i++) {
+      const hasCorrect = questions[i].options.some(opt => opt.correct);
+      if (!hasCorrect) {
+        setActiveQuestionIndex(i);
+        toast.error(`Question ${i + 1} needs at least one correct answer`);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const quizData = {
@@ -216,12 +231,17 @@ function CreateQuiz() {
         }))
       };
 
-      const response = await axios.post(`${API}/admin/quiz`, quizData);
-      toast.success(`Quiz created! Code: ${response.data.code}`);
+      const response = await axios.post(`${API}/admin/quiz`, quizData, authHeader());
       
       localStorage.removeItem('quiz_draft');
-      navigate('/admin');
+      setCreatedQuiz(response.data);
     } catch (error) {
+      if (error.response?.status === 401) {
+        localStorage.removeItem('adminToken');
+        toast.error('Session expired. Please login again.');
+        navigate('/admin/login');
+        return;
+      }
       console.error('Error creating quiz:', error);
       toast.error('Failed to create quiz');
     } finally {
@@ -803,6 +823,95 @@ function CreateQuiz() {
                     </Card>
                   ))}
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Success Screen */}
+      <AnimatePresence>
+        {createdQuiz && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-gradient-to-br from-purple-600 via-indigo-600 to-blue-600 z-[100] flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.7, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', duration: 0.5 }}
+              className="bg-white rounded-3xl p-8 md:p-12 max-w-lg w-full text-center shadow-2xl"
+            >
+              <motion.div
+                animate={{ rotate: [0, -10, 10, -10, 0], scale: [1, 1.1, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              >
+                <Trophy className="w-20 h-20 text-yellow-500 mx-auto mb-6" />
+              </motion.div>
+              
+              <h2 className="text-3xl md:text-4xl font-black text-gray-900 mb-2" style={{ fontFamily: 'Fredoka, sans-serif' }}>
+                Quiz Created! 🎉
+              </h2>
+              <p className="text-gray-500 mb-8">Share this PIN with your players</p>
+              
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                className="bg-purple-50 rounded-2xl p-6 mb-6 cursor-pointer"
+                onClick={() => {
+                  navigator.clipboard.writeText(createdQuiz.code);
+                  toast.success('📋 Game PIN copied!');
+                }}
+              >
+                <p className="text-sm text-purple-600 font-semibold mb-2">GAME PIN</p>
+                <p className="text-5xl md:text-6xl font-black text-purple-900 tracking-wider select-all" style={{ fontFamily: 'Fredoka, sans-serif' }}>
+                  {createdQuiz.code}
+                </p>
+                <p className="text-xs text-purple-400 mt-2">Click to copy</p>
+              </motion.div>
+              
+              <div className="flex items-center justify-center mb-6">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${window.location.origin}/join?code=${createdQuiz.code}`}
+                  alt="QR Code"
+                  className="w-32 h-32 rounded-xl shadow-lg"
+                />
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  onClick={() => {
+                    if (navigator.share) {
+                      navigator.share({
+                        title: createdQuiz.title,
+                        text: `Join my quiz! Game PIN: ${createdQuiz.code}`,
+                        url: `${window.location.origin}/join?code=${createdQuiz.code}`
+                      }).catch(() => {});
+                    } else {
+                      navigator.clipboard.writeText(`${window.location.origin}/join?code=${createdQuiz.code}`);
+                      toast.success('Join link copied!');
+                    }
+                  }}
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-full px-6 py-3 gap-2"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Share Quiz
+                </Button>
+                
+                <Button
+                  onClick={() => navigate(`/lobby/${createdQuiz.code}`)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-full px-6 py-3 gap-2"
+                >
+                  Go to Lobby
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/admin')}
+                  className="rounded-full px-6 py-3"
+                >
+                  Dashboard
+                </Button>
               </div>
             </motion.div>
           </motion.div>

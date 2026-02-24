@@ -37,7 +37,7 @@ const Home = () => {
             data-testid="home-title"
           >
             <span className="bg-gradient-to-r from-[#FF6B00] via-[#FF0055] to-[#9D00FF] bg-clip-text text-transparent">
-              Quiz Arena
+              Prashnify
             </span>
           </h1>
           
